@@ -149,6 +149,13 @@ browser-harness telemetry and update checks are off by default (`BH_TELEMETRY=0`
 - Index adapters for React Router, Remix, Rails and Django.
 - Waiting on page readiness instead of fixed pauses, and click-through HTML tours from the same recordings.
 
+## Contributing
+
+Contributions are welcome, especially index readers for more frameworks (React Router, Remix, Rails, Django),
+waiting on page readiness instead of fixed pauses, and tests from the same sentence. Start with the
+[good first issues](https://github.com/q3learners/jev-demofast/labels/good%20first%20issue) and read
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup (the tests run offline) and guidelines.
+
 ## Credits
 
 Built on [browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast) and
