@@ -154,7 +154,10 @@ def build(repo: Path):
         route = route_of(page, app)
         if route is None:
             continue
-        seen, frontier = set(), [(page, 0)]
+        # A page renders inside every layout.tsx from its folder up to app/ (nav bars, sidebars, headers live there).
+        layouts = [d / "layout.tsx" for d in [page.parent, *page.parent.parents] if d.is_relative_to(app)
+                   and (d / "layout.tsx").is_file()]
+        seen, frontier = set(), [(page, 0)] + [(l, 0) for l in layouts]
         merged = {"links": [], "buttons": [], "fields": [], "texts": [], "submits": False}
         while frontier and len(seen) < MAX_FILES:
             f, depth = frontier.pop(0)

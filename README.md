@@ -92,8 +92,11 @@ Details and the experiments behind each rule are in [docs/how-it-works.md](docs/
 ## Measured (September 2026)
 
 - **GitHub, a site it was never tuned for:** 3 of 3 runs, **19.6–28.2 s** from sentence to MP4 and GIF.
-- **Jev + app index, a password reset three screens from a marketing home page:** 2 of 2 in 10.8–15.0 s, with no
-  LLM route plan. Without the map, Jev gave up at step 1.
+- **Jev + app index on [nextjs/saas-starter](https://github.com/nextjs/saas-starter):** sign in, then invite a
+  teammate as a member, with no LLM route plan. 3 of 3 runs, **12.2–16.3 s** from sentence to video, with the
+  invitation confirmed in the database. Reproduce it: `examples/saas-starter-invite.sh`.
+- **Jev + app index, a password reset three screens from a marketing home page:** 2 of 2 in 10.8–15.0 s. Without the
+  map, Jev gave up at step 1.
 - **Narrated login → catalog demo:** 44 s end to end for a 73 s video; all 5 catalog entries read correctly.
 - **Synonyms:** the plan said "Sign in" where the site said "Log in", and "Account recovery" where it said
   "Forgot password?". Jev matched them at 0.96–0.99; keyword matching alone got stuck.

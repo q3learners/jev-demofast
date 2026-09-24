@@ -11,13 +11,15 @@ from urllib.parse import urlparse
 from ..browser.elements import describe, words
 from ..index import route_for, summary
 from ..record.recorder import Recorder
-from .guards import blocked, fill_text, on_site
+from .guards import PLACEHOLDER, blocked, fill_text, on_site
 from .session import Session, StalePage, fingerprint
 
 CONFIDENT = 0.5
-VALUES = """Fill a web form for the user's goal. Return JSON {"values": {"<field description>": "<text to type>"}} for the
-fields the goal gives values for, using the field descriptions exactly as listed. Omit fields the goal doesn't cover.
-Secrets appear as placeholders like {{PASSWORD}}: copy them verbatim."""
+VALUES = """Fill ONE web form for the user's goal. Return JSON {"values": {"<field description>": "<text to type>"}} for
+the fields the goal gives values for, using the field descriptions exactly as listed. Omit fields the goal doesn't cover.
+A goal can span several forms (e.g. sign in, then invite someone): use the screen and what's already done to tell which
+part of the goal THIS form serves, and give only the values meant for this form (an invite form gets the invitee's
+email, not the signed-in user's). Secrets appear as placeholders like {{PASSWORD}}: copy them verbatim."""
 
 
 def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=True, log=print):
@@ -26,7 +28,7 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     s = Session(url, fresh=fresh)
     rec = Recorder(out, s, blur_typed=blur_typed)
     result = {"goal": goal, "verified": False}
-    tried, filled, decisions = set(), set(), 0
+    tried, filled, decisions, history = set(), set(), 0, []
     try:
         rec.snap(1.5)
         rec.commit({"do": "open"}, s.page)
@@ -52,12 +54,12 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
                 result["verified"] = True
                 break
             if mode == "act_here" and fields and path not in filled:
-                if _fill_and_submit(cf, s, rec, goal, fields, state, log, ms):
+                if _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
                     result["verified"] = True
                     break
                 filled.add(path)
                 continue
-            if not _navigate(cf, s, rec, goal, index, route, path, els, state, tried, log, ms):
+            if not _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, log, ms):
                 break
     finally:
         rec.save(goal)
@@ -68,9 +70,11 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     return result
 
 
-def _fill_and_submit(cf, s, rec, goal, fields, state, log, ms):
+def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
     """Fill the fields the goal gives values for, submit, settle, and ask Jev whether it's done."""
-    values = cf.chat_json(cf.s.read_model, VALUES, {"goal": goal, "fields": [e["label"] for e in fields]}).get("values", {})
+    values = cf.chat_json(cf.s.read_model, VALUES, {
+        "goal": goal, "already_done": history[-6:], "fields": [e["label"] for e in fields],
+        "screen": {"title": state["screen"]["title"], "text": state["screen"]["visible_text"][:500]}}).get("values", {})
     for e in fields:
         v = values.get(e["label"])
         if not v:
@@ -82,6 +86,15 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, log, ms):
         rec.snap(0.8)
         rec.commit({"do": "fill", "target": e["label"]}, s.observe())
         log(f"{ms():>6} ms    fill {e['label'][:30]!r}")
+        history.append(f"filled {e['label'][:40]} on {state['screen']['url']}")
+    # Passwords are hidden from observation by design: type a {{NAME}} secret from the goal straight into the field.
+    secrets = PLACEHOLDER.findall(goal)
+    if secrets and s.type_secret_into_password(fill_text("{{" + secrets[0] + "}}")):
+        time.sleep(0.2)
+        rec.snap(0.8)
+        rec.commit({"do": "fill", "target": "password (typed directly; never shown)"}, s.observe())
+        log(f"{ms():>6} ms    fill password (typed directly; value never shown)")
+    _choose_options(cf, s, rec, goal, state, log, ms)
     buttons = [e for e in s.elements() if "click" in e["actions"] and e["role"] == "button" and not blocked(e["label"])]
     if not buttons:
         return False
@@ -89,20 +102,22 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, log, ms):
                           {str(e["node"]): describe(e) for e in buttons[:20]}, state)
     b = next(e for e in buttons if str(e["node"]) == key)
     rec.snap(1.0, node=b["node"])
+    before_url = s.page["url"]
     before = s.observe().get("text") or ""
     s.act(b, "click")
     page = s.settle(before)
     rec.snap(1.5)
     rec.commit({"do": "click", "target": b["label"]}, page)
     log(f"{ms():>6} ms    submit {b['label'][:30]!r} ({conf:.2f})")
+    history.append(f"submitted '{b['label'][:40]}' on {state['screen']['url']}")
     for attempt in range(2):  # not confirmed yet? let the page settle once more and ask again before moving on
         done = cf.yes("Does this screen confirm the goal was accomplished?",
                       {"goal": goal, "just_did": f"submitted the form with '{b['label']}'",
                        "visible_text": " ".join((page.get("text") or "").split())[:800]},
                       true="the page confirms success", false="not confirmed yet, or an error")
         log(f"{ms():>6} ms  Jev: done? {done:.2f}")
-        if done >= CONFIDENT or attempt:
-            break
+        if done >= CONFIDENT or attempt or page["url"] != before_url:
+            break  # moved to another page: that was a step of the goal, not its end, so no second wait
         page = s.settle(page.get("text") or "", max_s=4)
     if done >= CONFIDENT and rec.out:  # the confirmation screen is the demo's last frame
         rec.snap(2.0)
@@ -110,7 +125,30 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, log, ms):
     return done >= CONFIDENT
 
 
-def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, log, ms):
+def _choose_options(cf, s, rec, goal, state, log, ms):
+    """Radio buttons / checkboxes on the form: Jev picks the one the goal calls for; clicked only if not already set."""
+    opts = [e for e in s.elements() if e["role"] in ("radio", "checkbox") and "click" in e["actions"] and not blocked(e["label"])]
+    if not opts:
+        return
+    key, conf = cf.choose("Which option does the goal call for on this form? 'none' if the goal doesn't mention any.",
+                          {str(e["node"]): f"{e['role']} {e['label'][:60]} ({e['current']})" for e in opts[:20]},
+                          state, allow_none=True)
+    e = next((o for o in opts if str(o["node"]) == key), None)
+    if e is None or conf < CONFIDENT:
+        log(f"{ms():>6} ms    options: leave as they are ({conf:.2f})")
+        return
+    if e["current"] == "checked":
+        log(f"{ms():>6} ms    option {e['label'][:30]!r} already selected ({conf:.2f})")
+        return
+    rec.snap(1.0, node=e["node"])
+    s.act(e, "click")
+    time.sleep(0.2)
+    rec.snap(0.8)
+    rec.commit({"do": "click", "target": e["label"]}, s.observe())
+    log(f"{ms():>6} ms    select {e['label'][:30]!r} ({conf:.2f})")
+
+
+def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, log, ms):
     """Annotate each option with where it leads, per the index; Jev picks one; click it."""
     options = []
     for e in els:
@@ -151,6 +189,7 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, log, ms):
         rec.discard()
         return False
     rec.commit({"do": "click", "target": e["label"]}, page)
+    history.append(f"clicked '{e['label'][:40]}' on {path}")
     log(f"{ms():>6} ms    click {e['label'][:34]!r} {where[:70]} ({conf:.2f})"
         f"{'' if fingerprint(page) != before else '  [no change]'}")
     return True

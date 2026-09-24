@@ -41,3 +41,11 @@ def test_route_for_matches_dynamic_segments_and_summary_is_compact():
     assert route_for("/nope", idx) is None
     s = summary("/auth/forgot-password", idx)
     assert "Email address" in s and len(s) <= 420
+
+
+def test_layout_links_apply_to_every_page_beneath_them():
+    idx = index()
+    for route in ("/dashboard", "/dashboard/settings"):
+        links = {(l["label"], l["to"]) for l in idx[route]["links"]}
+        assert ("Settings", "/dashboard/settings") in links and ("Team", "/dashboard") in links
+    assert not any(l["label"] == "Settings" for l in idx["/login"]["links"])  # not outside the layout's folder
