@@ -42,6 +42,11 @@ link first (0.62). With the index it completed the flow every time.
 - **Guards.** Stay on the starting site; never click sign-up, third-party login, log-out or delete (unless the step
   says so); start from a clean session with `--fresh`.
 
+- **Dry run.** `--dry-run` stops before the first data-changing click (a submit-like button such as Save, Send or
+  Invite, or any checkbox, radio or switch) and records it with a "would click" badge. Signing in is allowed: it
+  changes no data. On saas-starter it signed in, filled the invite and stopped at "Invite Member"; the database
+  was unchanged.
+
 ## Secrets and privacy
 
 - `{{PASSWORD}}` (any `{{NAME}}`) stays a placeholder in every prompt and log; the value comes from `DEMO_PASSWORD`
@@ -53,6 +58,9 @@ link first (0.62). With the index it completed the flow every time.
 ## Recording and narration
 
 - Frames from undone attempts never reach the video; each accepted step is one segment.
+- The script has a length budget: at most 20 words a line and about 11 words per segment, checked in code, with
+  a retry that names the lines to shorten. Without it the GitHub demo's narration ran 192 words and a 107 s video;
+  with it, 61-71 words and 36-43 s.
 - The script writer only sees what was on screen. It writes plain `id | label | text` lines, because JSON broke on
   quote marks in spoken text, and the line count is enforced by segment id.
 - Voice: Deepgram Aura-2 on Cloudflare, generated in parallel.

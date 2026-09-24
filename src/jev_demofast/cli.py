@@ -6,6 +6,7 @@
   jev-demofast run / narrate / render                  the stages of `demo`, one at a time
 """
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import load, quiet_browser_harness
+from .drive.guards import task_goal
 
 CHROME_CANDIDATES = [
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -89,11 +91,12 @@ def cmd_run(a, cf=None):
     if a.index:
         from .drive import jev_drive
         from .index import load as load_index
-        return jev_drive.run(cf, a.url, a.goal, load_index(a.index), out=a.work, fresh=a.fresh, blur_typed=not a.no_blur)
+        return jev_drive.run(cf, a.url, a.goal, load_index(a.index), out=a.work, fresh=a.fresh,
+                             blur_typed=not a.no_blur, dry_run=a.dry_run)
     from .drive import navigator
     return navigator.run(cf, a.url, a.goal, out=a.work, picker=a.picker, fresh=a.fresh,
                          page_maps=bool(getattr(a, "voice", None)) or getattr(a, "page_maps", False),
-                         blur_typed=not a.no_blur)
+                         blur_typed=not a.no_blur, dry_run=a.dry_run)
 
 
 def cmd_narrate(a, cf=None):
@@ -115,15 +118,28 @@ def cmd_render(a):
 def cmd_demo(a):
     cf = _cf(a)
     a.work = a.work or str(Path(a.out).with_suffix("")) + ".run"
-    a.goal = a.prompt
+    a.goal = task_goal(a.prompt)
+    if a.goal != a.prompt:
+        print(f"goal: {a.goal}")
     result = cmd_run(a, cf)
-    if a.voice and not a.index:
-        cmd_narrate(a, cf)
+    if a.voice:
+        cmd_narrate(a, cf)  # camera-follow uses page maps where the run has them (navigator); otherwise frames as shot
     else:
-        if a.voice:
-            print("note: narration needs the navigator's page maps; rendering without voice for --index runs")
         cmd_render(a)
+    _note_prompt(a.work, a.prompt)
+    if result.get("would_click"):
+        print(f"dry run: stopped before {result['would_click']!r}; nothing was changed")
     print(f"verified: {result.get('verified')} | {result.get('seconds')} s | Jev {result.get('jev_calls')} calls")
+
+
+def _note_prompt(work, prompt):
+    """Keep the prompt as typed next to the run's decisions, for replay pages."""
+    path = os.path.join(work, "replay.json")
+    if os.path.exists(path):
+        with open(path) as f:
+            replay = json.load(f)
+        with open(path, "w") as f:
+            json.dump({"prompt": prompt, **replay}, f, indent=1)
 
 
 def main(argv=None):
@@ -150,6 +166,8 @@ def main(argv=None):
                         help="without an index: who picks elements (default: jev)")
         sp.add_argument("--fresh", action="store_true", help="clear the site's cookies first (start logged out)")
         sp.add_argument("--no-blur", action="store_true", help="show typed values in the video")
+        sp.add_argument("--dry-run", action="store_true",
+                        help="stop before the first action that changes data; it is shown as 'would click'")
         sp.add_argument("--use-my-browser", action="store_true",
                         help="drive your own running Chrome with its logins (opt-in; asks for confirmation)")
         sp.add_argument("--yes", action="store_true", help="skip the --use-my-browser confirmation (scripts)")

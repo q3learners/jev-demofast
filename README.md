@@ -50,10 +50,17 @@ DEMO_PASSWORD='...' uv run jev-demofast demo "Reset my password for test@example
 With an index, **Jev drives on its own**; no LLM plans the route. Without one, an LLM plans the route once and Jev
 handles every step that needs judgment.
 
-**Narrated:** add `--voice apollo` for a Deepgram Aura-2 voice (about $0.03 per 1,000 characters). The script is
-written from what was actually on screen, and the camera pans to whatever each line talks about.
+**Narrated:** add `--voice apollo` for a Deepgram Aura-2 voice (about $0.03 per 1,000 characters), with or without
+`--index`. The script is written from what was actually on screen and kept short (about 11 words per step), and on
+runs without an index the camera pans to whatever each line talks about.
 
-Use **staging and test accounts**. The tool clicks real buttons and submits real forms.
+Use **staging and test accounts**. The tool clicks real buttons and submits real forms. To see the route first,
+add `--dry-run`: the run stops before the first action that changes data (a submit, save, invite or toggle) and
+the video ends on that element, labelled "would click".
+
+"Create a demo of how to X" and "Show me how to X" are treated as X. Every run also writes `replay.json`: each
+Jev question with its options, probabilities and timing, plus a timestamped log, so you can see why it clicked what
+it clicked.
 
 ## Logins
 
@@ -93,7 +100,7 @@ Details and the experiments behind each rule are in [docs/how-it-works.md](docs/
 
 - **GitHub, a site it was never tuned for:** 3 of 3 runs, **19.6–28.2 s** from sentence to MP4 and GIF.
 - **Jev + app index on [nextjs/saas-starter](https://github.com/nextjs/saas-starter):** sign in, then invite a
-  teammate as a member, with no LLM route plan. 3 of 3 runs, **12.2–16.3 s** from sentence to video, with the
+  teammate as a member, with no LLM route plan. 5 of 5 runs, **8.3–17.1 s** from sentence to video, with the
   invitation confirmed in the database. Reproduce it: `examples/saas-starter-invite.sh`.
 - **Jev + app index, a password reset three screens from a marketing home page:** 2 of 2 in 10.8–15.0 s. Without the
   map, Jev gave up at step 1.

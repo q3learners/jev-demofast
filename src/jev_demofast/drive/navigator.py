@@ -10,20 +10,21 @@ import json
 import time
 
 from ..record.recorder import Recorder
-from .guards import blocked, fill_text, has_secret, on_site
+from .guards import DryRunStop, blocked, fill_text, has_secret, on_site, would_change
 from .pick import Picker
 from .plan import extract, make_plan
 from .session import Session, StalePage, fingerprint
 
 
 def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan=True, page_maps=False,
-        blur_typed=True, log=print):
+        blur_typed=True, dry_run=False, log=print):
     t0 = time.perf_counter()
     ms = lambda: round((time.perf_counter() - t0) * 1000)
     s = Session(url, fresh=fresh)
     rec = Recorder(out, s, page_maps=page_maps, blur_typed=blur_typed)
+    log = rec.tee(log)
     pick = Picker(cf, picker)
-    result = {"goal": goal, "verified": False, "items": []}
+    result = {"goal": goal, "verified": False, "items": [], "dry_run": dry_run}
     try:
         rec.snap(2.0)
         rec.commit({"do": "open"}, s.page)
@@ -85,6 +86,9 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                 log(f"{ms():>6} ms  STUCK: nothing on the page means {step['target']!r}")
                 break
             prev_url = page["url"]
+            if dry_run and kind == "click" and would_change(chosen):
+                rec.would_click(chosen["node"], chosen["label"], page)
+                raise DryRunStop(chosen["label"][:60])
             rec.snap(1.3, node=chosen["node"])
             before = fingerprint(s.observe())
             try:
@@ -143,8 +147,11 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
             s.settle(s.page.get("text") or "", max_s=6)
             result["verified"] = done_text in (s.page.get("text") or "").lower()
             log(f"{ms():>6} ms  {'VERIFIED' if result['verified'] else 'UNVERIFIED'}: finish text {done_text!r}")
+    except DryRunStop as stop:
+        result["would_click"] = str(stop)
+        log(f"{ms():>6} ms  DRY RUN: stopped before {str(stop)!r}; nothing was changed")
     finally:
-        rec.save(goal)
+        rec.save(goal, cf.decisions)
         s.close()
     result.update(seconds=round((time.perf_counter() - t0), 1), **cf.stats)
     log(f"done in {result['seconds']} s | Jev {cf.stats['jev_calls']} calls, {cf.stats['jev_seconds']:.1f} s | "

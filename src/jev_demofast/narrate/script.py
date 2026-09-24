@@ -27,14 +27,38 @@ How a real presenter sounds:
   never "they claim" or "apparently".
 - Never say passwords, email addresses, account or user names shown on screen, "test account", "automation",
   "AI agent", "segment", or describe clicking in the abstract. Never introduce yourself by name.
-- Length: the opening line, any segment that lands on a new important screen, and the closing/read line are full
-  sentences of 15-30 words with something specific from screen_text. Only quick form steps (typing, submitting)
-  are short fragments of 3-8 words that continue the previous line.
+- Length is strict, because every word adds to the video's running time:
+  - no line over {cap} words, and the whole script under {budget} words;
+  - the opening line and the closing line: one short sentence each, about 12-18 words;
+  - a new screen: one point worth noticing, about 8-16 words;
+  - quick steps (typing, submitting, opening a menu): a fragment of 2-6 words that continues the previous line;
+  - a line that reads information: name the two or three most telling items, not all of them.
+  Cut anything the viewer can already see for themselves.
 
 Bad (robotic): "Now, we're securing our account with a password." "Next, we're browsing the course catalog."
-Good (human): "...drop in my password, and sign in." "So this is the catalog — every course this term, and each
-one comes with its own AI tutor."
+Bad (too long): "So the real signals: 56k stars but also 9.9k forks, 1,786 commits of history, and only 13 open issues
+with 27 pull requests, meaning real people are using it, fixing it, and contributing back."
+Good (human, short): "...drop in my password, and sign in." "So this is the catalog: every course this term, each
+with its own tutor." "Forks, commits and pull requests are the real signal; stars alone can be bought."
 Label: 2-4 words naming the segment."""
+
+LINE_CAP = 20          # words per line
+WORDS_PER_SEGMENT = 11  # the whole script's budget, per segment: about 4-5 s of speech each
+
+
+def word_budget(segment_count):
+    return WORDS_PER_SEGMENT * segment_count
+
+
+def too_long(by_id, ids):
+    """What breaks the length rules, as instructions for a retry; empty when the script fits."""
+    counts = {i: len(by_id[i][1].split()) for i in ids}
+    problems = [f"line {i} has {n} words; the cap is {LINE_CAP}" for i, n in counts.items() if n > LINE_CAP]
+    total, budget = sum(counts.values()), word_budget(len(ids))
+    if total > budget * 1.1:  # a few words over isn't worth another model call
+        problems.append(f"the total is {total} words; the budget is {budget}")
+    return problems
+
 
 NARRATOR_FIELDS = {"do", "target", "chose", "items", "url", "screen_title", "screen_text"}
 LINE = re.compile(r"^\W*(\d\d)\W*\|\s*(.*?)\s*\|\s*(.+?)\s*$")
@@ -57,13 +81,23 @@ def write(cf, run_dir, product="", attempts=3, log=print):
     context = {"goal": re.sub(r"\{\{\w+\}\}", "(secret)", data["goal"]), "product": product,
                "note": "The screen_text is what the viewer sees; quote it, don't invent features.",
                "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in NARRATOR_FIELDS}} for a in segs]}
+    system = SYSTEM.format(cap=LINE_CAP, budget=word_budget(len(ids)))
+    best = None
     for attempt in range(attempts):
-        by_id = parse_lines(cf.chat(cf.s.script_model, SYSTEM, json.dumps(context), cf.s.script_extra))
-        if all(i in by_id for i in ids):
+        by_id = parse_lines(cf.chat(cf.s.script_model, system, json.dumps(context), cf.s.script_extra))
+        if not all(i in by_id for i in ids):
+            log(f"  script attempt {attempt + 1}: got {sorted(by_id)} for {ids}; retrying")
+            continue
+        problems = too_long(by_id, ids)
+        if best is None or sum(len(by_id[i][1].split()) for i in ids) < sum(len(best[i][1].split()) for i in ids):
+            best = by_id
+        if not problems:
             break
-        log(f"  script attempt {attempt + 1}: got {sorted(by_id)} for {ids}; retrying")
-    else:
+        log(f"  script attempt {attempt + 1}: too long ({'; '.join(problems)}); retrying")
+        context["previous_attempt_was_too_long"] = problems  # say exactly what to shorten
+    if best is None:
         raise SystemExit("the script never covered every segment; not writing narration.txt")
+    by_id = best  # still over after the retries: keep the shortest complete script rather than fail the video
     path = os.path.join(run_dir, "narration.txt")
     with open(path, "w") as f:
         f.write("Narration generated from the recorded run: one numbered line per video segment.\n\n")

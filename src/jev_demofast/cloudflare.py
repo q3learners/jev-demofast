@@ -19,6 +19,7 @@ class Cloudflare:
         self.s = settings
         self._local = threading.local()  # one connection per thread: an HTTP/2 client isn't safe to share
         self.stats = {"jev_calls": 0, "jev_seconds": 0.0, "llm_calls": 0, "llm_seconds": 0.0}
+        self.decisions = []  # every Jev question, its options and the answer: the replay/inspector log
 
     @property
     def http(self):
@@ -53,6 +54,10 @@ class Cloudflare:
             self.stats["jev_seconds"] += time.perf_counter() - started
         result = data.get("result", data)
         result = result.get("result", result)  # Workers AI wraps the model output one level deeper
+        for qid, q in questions.items():
+            self.decisions.append({"at": time.time(), "ms": round((time.perf_counter() - started) * 1000),
+                                   "type": q["type"], "question": q.get("instructions", ""),
+                                   "options": q.get("criteria", {}), "answer": result["answers"].get(qid, {})})
         return result["answers"]
 
     def choose(self, instructions, options, state, allow_none=False):

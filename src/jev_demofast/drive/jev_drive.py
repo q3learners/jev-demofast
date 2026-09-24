@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from ..browser.elements import describe, words
 from ..index import route_for, summary
 from ..record.recorder import Recorder
-from .guards import PLACEHOLDER, blocked, fill_text, on_site
+from .guards import PLACEHOLDER, DryRunStop, blocked, fill_text, on_site, would_change
 from .session import Session, StalePage, fingerprint
 
 CONFIDENT = 0.5
@@ -22,12 +22,14 @@ part of the goal THIS form serves, and give only the values meant for this form 
 email, not the signed-in user's). Secrets appear as placeholders like {{PASSWORD}}: copy them verbatim."""
 
 
-def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=True, log=print):
+def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=True, dry_run=False, log=print):
     t0 = time.perf_counter()
     ms = lambda: round((time.perf_counter() - t0) * 1000)
     s = Session(url, fresh=fresh)
     rec = Recorder(out, s, blur_typed=blur_typed)
-    result = {"goal": goal, "verified": False}
+    rec.dry_run = dry_run
+    log = rec.tee(log)
+    result = {"goal": goal, "verified": False, "dry_run": dry_run}
     tried, filled, decisions, history = set(), set(), 0, []
     try:
         rec.snap(1.5)
@@ -61,8 +63,11 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
                 continue
             if not _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, log, ms):
                 break
+    except DryRunStop as stop:
+        result["would_click"] = str(stop)
+        log(f"{ms():>6} ms  DRY RUN: stopped before {str(stop)!r}; nothing was changed")
     finally:
-        rec.save(goal)
+        rec.save(goal, cf.decisions)
         s.close()
     result.update(seconds=round(time.perf_counter() - t0, 1), decisions=decisions, **cf.stats)
     log(f"done in {result['seconds']} s | {decisions} decisions | Jev {cf.stats['jev_calls']} calls, "
@@ -101,6 +106,7 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
     key, conf = cf.choose("Which button submits this form toward the goal?",
                           {str(e["node"]): describe(e) for e in buttons[:20]}, state)
     b = next(e for e in buttons if str(e["node"]) == key)
+    _stop_if_dry_run(rec, b, s)
     rec.snap(1.0, node=b["node"])
     before_url = s.page["url"]
     before = s.observe().get("text") or ""
@@ -140,6 +146,7 @@ def _choose_options(cf, s, rec, goal, state, log, ms):
     if e["current"] == "checked":
         log(f"{ms():>6} ms    option {e['label'][:30]!r} already selected ({conf:.2f})")
         return
+    _stop_if_dry_run(rec, e, s)
     rec.snap(1.0, node=e["node"])
     s.act(e, "click")
     time.sleep(0.2)
@@ -173,6 +180,7 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, 
                           {str(e["node"]): f"{e['label'][:50]} {w}"[:300] for e, w in options}, state)
     e, where = next(o for o in options if str(o[0]["node"]) == key)
     tried.add((path, e["node"]))
+    _stop_if_dry_run(rec, e, s)
     rec.snap(1.2, node=e["node"])
     before = fingerprint(s.observe())
     try:
@@ -193,3 +201,9 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, 
     log(f"{ms():>6} ms    click {e['label'][:34]!r} {where[:70]} ({conf:.2f})"
         f"{'' if fingerprint(page) != before else '  [no change]'}")
     return True
+
+
+def _stop_if_dry_run(rec, e, s):
+    if getattr(rec, "dry_run", False) and would_change(e):
+        rec.would_click(e["node"], e["label"], s.observe())
+        raise DryRunStop(e["label"][:60])
