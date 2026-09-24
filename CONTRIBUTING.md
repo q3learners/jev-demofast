@@ -5,17 +5,20 @@ Thanks for helping. This is a young project, so small, focused pull requests are
 ## Good places to start
 
 Issues labelled [good first issue](https://github.com/q3learners/jev-demofast/labels/good%20first%20issue) are
-scoped and ready. The three areas that matter most right now:
+scoped and ready. The two areas that matter most right now:
 
 - **Index readers for more frameworks.** The source-code map only reads Next.js (app router) today. React Router
   and Remix are the natural next ones, then Rails and Django.
 - **Waiting for pages instead of fixed pauses.** The drivers sleep for fixed times after actions
   (`src/jev_demofast/drive/`). Waiting on real page readiness would make runs faster and steadier.
-- **Tests from the same sentence.** The same prompt plus explicit expectations, with CI exit codes, so one spec
-  gives you a demo and a test.
 
 For anything bigger than a bug fix, open an issue first (or comment on one), so we can agree on the approach before
 you write the code.
+
+## Contact
+
+Questions, or want to discuss something before opening an issue? Email Venkat at
+[venkat@q3learners.com](mailto:venkat@q3learners.com).
 
 ## Set up
 

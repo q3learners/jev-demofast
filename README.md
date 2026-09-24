@@ -144,17 +144,10 @@ browser-harness telemetry and update checks are off by default (`BH_TELEMETRY=0`
   areas. Sites protected by captchas will block it.
 - Jev is a paid, closed model. The decision layer is small (`cloudflare.py`), so other backends can be added.
 
-## Roadmap
-
-- **Tests from the same sentence:** explicit expectations, a replay mode, and CI exit codes, so one spec gives you
-  a demo and a test.
-- Index adapters for React Router, Remix, Rails and Django.
-- Waiting on page readiness instead of fixed pauses, and click-through HTML tours from the same recordings.
-
 ## Contributing
 
-Contributions are welcome, especially index readers for more frameworks (React Router, Remix, Rails, Django),
-waiting on page readiness instead of fixed pauses, and tests from the same sentence. Start with the
+Contributions are welcome, especially index readers for more frameworks (React Router, Remix, Rails, Django) and
+waiting on page readiness instead of fixed pauses. Start with the
 [good first issues](https://github.com/q3learners/jev-demofast/labels/good%20first%20issue) and read
 [CONTRIBUTING.md](CONTRIBUTING.md) for setup (the tests run offline) and guidelines.
 
