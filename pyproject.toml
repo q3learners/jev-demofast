@@ -1,0 +1,30 @@
+[project]
+name = "jev-demofast"
+version = "0.1.0"
+description = "One sentence in, a product demo video out. Jev drives your real app, guided by a map built from your source code."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "browser-harness==0.1.13",
+    "httpx[http2]>=0.28,<1",
+    "pillow>=11,<13",
+    "tree-sitter>=0.25,<0.27",
+    "tree-sitter-typescript>=0.23,<0.24",
+]
+
+[project.scripts]
+jev-demofast = "jev_demofast.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.4,<9"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jev_demofast"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

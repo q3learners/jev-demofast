@@ -1,0 +1,140 @@
+# jev-demofast
+
+**One sentence in, a product demo video out.** jev-demofast drives your real product in a browser, outlines every
+element it uses, and renders an MP4 or GIF, optionally narrated by a human-sounding voice. The step-by-step decisions
+are made by [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), a fast "System One" decision
+model. On your own app, Jev is guided by a map of every screen built from your source code.
+
+![GitHub trending demo, generated from one sentence](docs/github-trending.gif)
+
+```
+jev-demofast demo "Show how to find hot trending open-source projects on GitHub this week, then open one and show
+which signals help you tell a genuine project from spam" --url https://github.com/ --gif
+```
+
+That GIF is the unedited output, about 20 seconds from sentence to video. Jev opened the hidden *Date range* menu to
+find "This week" on its own.
+
+## Why
+
+Hand-recorded demos go stale with every UI change, and every demo tool we could find starts with a person recording
+clicks. jev-demofast starts from a sentence, so re-recording after a release is one command.
+
+## Quickstart
+
+**You need:**
+- Python 3.12+, [uv](https://docs.astral.sh/uv/), ffmpeg and Google Chrome
+- a Cloudflare account with Workers AI
+
+Jev runs on Cloudflare as `typesafe/jev` and is paid from **AI Gateway credits**: add a few dollars in the dashboard
+(AI → AI Gateway → Credits). A demo costs cents.
+
+```bash
+git clone https://github.com/q3learners/jev-demofast && cd jev-demofast
+uv sync
+export CLOUDFLARE_ACCOUNT_ID=...   CLOUDFLARE_API_TOKEN=...          # a token with Workers AI access
+
+uv run jev-demofast chrome          # an isolated Chrome profile; your own browser and logins are untouched
+uv run jev-demofast demo "Show how to find hot trending projects on GitHub this week" \
+    --url https://github.com/ --gif --out github.mp4
+```
+
+**Your own app, with a map built from source (Next.js app router):**
+
+```bash
+uv run jev-demofast index ../my-nextjs-app --out app-index.json      # ~1 s for 190 routes
+DEMO_PASSWORD='...' uv run jev-demofast demo "Reset my password for test@example.com" \
+    --url https://staging.example.com --index app-index.json --fresh --out reset.mp4
+```
+
+With an index, **Jev drives on its own**; no LLM plans the route. Without one, an LLM plans the route once and Jev
+handles every step that needs judgment.
+
+**Narrated:** add `--voice apollo` for a Deepgram Aura-2 voice (about $0.03 per 1,000 characters). The script is
+written from what was actually on screen, and the camera pans to whatever each line talks about.
+
+Use **staging and test accounts**. The tool clicks real buttons and submits real forms.
+
+## Logins
+
+There are three ways to get past a login, safest first:
+
+1. **Log in once in the tool's own Chrome (recommended).**
+   ```bash
+   uv run jev-demofast chrome --open https://staging.example.com/login
+   ```
+   You log in by hand, so SSO, "Sign in with Google" and two-factor codes all work. The tool's profile
+   (`~/.cache/jev-demofast/chrome-profile`) remembers the session, so later demos start logged in. Don't pass
+   `--fresh`: it clears that site's cookies.
+2. **Let the tool type the credentials:** put `{{PASSWORD}}` in the prompt and set `DEMO_PASSWORD`. The value is
+   typed straight into the password field; no model or log ever sees it.
+3. **Your own everyday Chrome (opt-in):** `--use-my-browser`.
+   - You switch on remote debugging in `chrome://inspect/#remote-debugging`, and Chrome asks you to allow the
+     connection.
+   - The tool asks you to confirm (`--yes` skips this, for scripts). It refuses `--fresh`, so it can never log you
+     out, and it works in a new tab without touching your other tabs.
+   - It acts **as you**, under your real logins, often on production. The guards still apply, but mistakes are
+     real. Use it knowingly.
+
+## How it works
+
+| Stage | What happens | Who decides |
+|---|---|---|
+| Map (optional) | Routes, links (label → destination), fields, buttons, text and data-changing forms, parsed from source with tree-sitter | code |
+| Plan | Without a map: a rough route, written once ("Open Source → Trending → This week → a repo") | LLM |
+| Drive | Each step: which element matches, which menu hides a target, whether the form is here, whether it's done | **Jev** |
+| Check | Stays on the site; never signs up, logs out or deletes; undoes a click that led nowhere; waits for the page to settle before verifying | code |
+| Record | Outlined frames; typed values blurred; secrets typed from `{{NAME}}` placeholders and never shown to a model | code |
+| Render | MP4 and GIF, with an optional script, voice and camera that follows the narration | ffmpeg (+ LLM, TTS) |
+
+Details and the experiments behind each rule are in [docs/how-it-works.md](docs/how-it-works.md).
+
+## Measured (September 2026)
+
+- **GitHub, a site it was never tuned for:** 3 of 3 runs, **19.6–28.2 s** from sentence to MP4 and GIF.
+- **Jev + app index, a password reset three screens from a marketing home page:** 2 of 2 in 10.8–15.0 s, with no
+  LLM route plan. Without the map, Jev gave up at step 1.
+- **Narrated login → catalog demo:** 44 s end to end for a 73 s video; all 5 catalog entries read correctly.
+- **Synonyms:** the plan said "Sign in" where the site said "Log in", and "Account recovery" where it said
+  "Forgot password?". Jev matched them at 0.96–0.99; keyword matching alone got stuck.
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | — | required |
+| `JEV_TOKEN` | the API token | a separate token for Jev calls |
+| `BU_CDP_URL` | `http://127.0.0.1:9333` | the Chrome to drive (`jev-demofast chrome` starts one) |
+| `JDF_PLAN_MODEL` / `JDF_PLAN_EXTRA` | `@cf/zai-org/glm-5.3-flash` / `{"reasoning_effort":"low"}` | route plans |
+| `JDF_READ_MODEL` | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | reading page text and form values |
+| `JDF_SCRIPT_MODEL` / `JDF_SCRIPT_EXTRA` | GLM-5.3-flash, reasoning low | the narration script |
+| `JDF_TTS_MODEL`, `JDF_EMBED_MODEL`, `JDF_JEV_MODEL` | Aura-2 en, bge-base, `typesafe/jev` | voice, camera-follow, decisions |
+| `DEMO_<NAME>` | — | values for `{{NAME}}` placeholders in prompts |
+
+browser-harness telemetry and update checks are off by default (`BH_TELEMETRY=0`, `BH_UPDATE_CHECK=0`).
+
+## Limits
+
+- The app index reads **Next.js app router** projects today. Other frameworks need an adapter that returns the same
+  shape (see `src/jev_demofast/index/__init__.py`). Without an index, any site still works through the LLM plan.
+- Jev's "done" judgment is borderline (about 0.5 after the page settles). That's enough to stop a demo, but not to
+  pass or fail a test.
+- Blind spots inherited from the browser layer: iframes, shadow DOM, file uploads, pop-up windows, and nested scroll
+  areas. Sites protected by captchas will block it.
+- Jev is a paid, closed model. The decision layer is small (`cloudflare.py`), so other backends can be added.
+
+## Roadmap
+
+- **Tests from the same sentence:** explicit expectations, a replay mode, and CI exit codes, so one spec gives you
+  a demo and a test.
+- Index adapters for React Router, Remix, Rails and Django.
+- Waiting on page readiness instead of fixed pauses, and click-through HTML tours from the same recordings.
+
+## Credits
+
+Built on [browser-use/jev-ultrafast](https://github.com/browser-use/jev-ultrafast) and
+[laya-ultrafast](https://github.com/ipenywis/laya-ultrafast) (MIT, Browser Use; see `NOTICE`),
+[browser-harness](https://pypi.org/project/browser-harness/) (MIT), and Jev by [TypeSafe](https://typesafe.ai),
+used through Cloudflare Workers AI. Not affiliated with TypeSafe or Browser Use.
+
+MIT License.
