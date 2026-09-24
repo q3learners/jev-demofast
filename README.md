@@ -1,5 +1,7 @@
 # jev-demofast
 
+[![onecentdemo: one sentence in, a narrated demo out](docs/banner.jpg)](https://onecentdemo.com)
+
 **One sentence in, a product demo video out.** jev-demofast drives your real product in a browser, outlines every
 element it uses, and renders an MP4 or GIF, optionally narrated by a human-sounding voice. The step-by-step decisions
 are made by [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), a fast "System One" decision
