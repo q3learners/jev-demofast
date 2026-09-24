@@ -5,6 +5,9 @@ element it uses, and renders an MP4 or GIF, optionally narrated by a human-sound
 are made by [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), a fast "System One" decision
 model. On your own app, Jev is guided by a map of every screen built from your source code.
 
+**See it run:** [onecentdemo.com](https://onecentdemo.com) replays two real runs, decision by decision, then plays the
+narrated videos they produced.
+
 ![GitHub trending demo, generated from one sentence](docs/github-trending.gif)
 
 ```
