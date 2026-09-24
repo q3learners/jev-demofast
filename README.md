@@ -31,6 +31,8 @@ clicks. jev-demofast starts from a sentence, so re-recording after a release is 
 **You need:**
 - Python 3.12+, [uv](https://docs.astral.sh/uv/), ffmpeg and Google Chrome
 - a Cloudflare account with Workers AI
+- optional: a [Nebius Token Factory](https://tokenfactory.nebius.com) account, to run the language models on NVIDIA
+  Nemotron (see [below](#choose-where-the-language-models-run))
 
 Jev runs on Cloudflare as `typesafe/jev` and is paid from **AI Gateway credits**: add a few dollars in the dashboard
 (AI → AI Gateway → Credits). A demo costs cents.
@@ -57,8 +59,9 @@ With an index, **Jev drives on its own**; no LLM plans the route. Without one, a
 handles every step that needs judgment.
 
 **Narrated:** add `--voice apollo` (or a female voice such as `thalia`) for a Deepgram Aura-2 voice (about $0.03 per
-1,000 characters), with or without `--index`. `--voice-speed 1.2` speaks faster at the same pitch. The script is written from what was actually on screen and kept short (about 11 words per step), and on
-runs without an index the camera pans to whatever each line talks about. Add `--music track.mp3` for a background
+1,000 characters), with or without `--index`. `--voice-speed 1.2` speaks faster at the same pitch. The script is
+written from what was actually on screen and kept short (about 11 words per step), and on runs without an index the
+camera pans to whatever each line talks about. Add `--music track.mp3` for a background
 bed: it plays alone for 2 s before the narrator starts and after they finish, loops to the video's length, and
 dips gently whenever the narrator speaks (the voice is also softened to sit inside it). Use a track
 you have the rights to (Pixabay Music and the YouTube Audio Library allow commercial use).
@@ -66,6 +69,9 @@ you have the rights to (Pixabay Music and the YouTube Audio Library allow commer
 Use **staging and test accounts**. The tool clicks real buttons and submits real forms. To see the route first,
 add `--dry-run`: the run stops before the first action that changes data (a submit, save, invite or toggle) and
 the video ends on that element, labelled "would click".
+
+**When a step fails** (for example, a form is refused), the run reports `verified: False`, the video ends on the error,
+and the narration says what went wrong, quoting the message on screen. It never presents a failed flow as a success.
 
 "Create a demo of how to X" and "Show me how to X" are treated as X. Every run also writes `replay.json`: each
 Jev question with its options, probabilities and timing, plus a timestamped log, so you can see why it clicked what
@@ -119,6 +125,42 @@ Details and the experiments behind each rule are in [docs/how-it-works.md](docs/
 - **Synonyms:** the plan said "Sign in" where the site said "Log in", and "Account recovery" where it said
   "Forgot password?". Jev matched them at 0.96–0.99; keyword matching alone got stuck.
 
+## Choose where the language models run
+
+Jev makes every click decision, and the voice is Deepgram Aura-2; both run on Cloudflare. The language-model steps
+(planning the route, reading page text and form values, writing the narration script) can run on either provider:
+
+| Provider | Models | Setup |
+|---|---|---|
+| **Cloudflare Workers AI** (default) | GLM-5.3-flash, Llama 3.3 | nothing extra |
+| **Nebius Token Factory** | NVIDIA Nemotron 3 Ultra | three steps below |
+
+**To use Nebius Token Factory:**
+
+1. Create an API key at [tokenfactory.nebius.com](https://tokenfactory.nebius.com) (API keys → Create).
+2. Set two variables, next to your Cloudflare ones (Jev and the voice still need those):
+   ```bash
+   export JDF_LLM_PROVIDER=nebius
+   export NEBIUS_API_KEY=...
+   ```
+3. Run any command as usual, for example:
+   ```bash
+   uv run jev-demofast demo "Show how to find trending projects on GitHub this week" --url https://github.com/
+   ```
+
+To try another Nebius model, set `JDF_NEBIUS_MODEL` (for example `nvidia/nemotron-3-super-120b-a12b`).
+
+**Measured on 24 September 2026** with Nemotron 3 Ultra doing all language-model work:
+
+- **GitHub trending:** 2 of 2 runs verified in **12.2–15.1 s**, including the hidden "This week" menu.
+- **saas-starter invite (with the source-code map):** 2 of 2 in **9.4–13.9 s**, invitation confirmed in the database.
+- **Narration:** script, voice and render in **6.7 s**; sentence to narrated video about **16 s**.
+
+Of the four Nemotron models on Token Factory, Ultra planned the GitHub route best (Open Source → Trending → This week
+→ a repo) in about 1 s. With thinking on, every model took 4–15 s per plan, so the tool turns thinking off.
+
+Any other OpenAI-compatible provider is one entry in `LLM_PROVIDERS` in `src/jev_demofast/config.py`.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -131,6 +173,8 @@ Details and the experiments behind each rule are in [docs/how-it-works.md](docs/
 | `JDF_SCRIPT_MODEL` / `JDF_SCRIPT_EXTRA` | GLM-5.3-flash, reasoning low | the narration script |
 | `JDF_TTS_MODEL`, `JDF_EMBED_MODEL`, `JDF_JEV_MODEL` | Aura-2 en, bge-base, `typesafe/jev` | voice, camera-follow, decisions |
 | `DEMO_<NAME>` | — | values for `{{NAME}}` placeholders in prompts |
+| `JDF_LLM_PROVIDER` | `cloudflare` | where route plans, page reading and scripts run: `cloudflare` or `nebius` |
+| `NEBIUS_API_KEY`, `JDF_NEBIUS_MODEL` | — / `nvidia/Nemotron-3-Ultra-550b-a55b` | Nebius Token Factory key and model (thinking off) |
 
 browser-harness telemetry and update checks are off by default (`BH_TELEMETRY=0`, `BH_UPDATE_CHECK=0`).
 

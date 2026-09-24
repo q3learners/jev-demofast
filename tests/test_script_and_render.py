@@ -53,3 +53,13 @@ def test_voice_speed_is_a_pitch_preserving_tempo_within_range():
     assert tempo_filter(1.0) is None
     with pytest.raises(SystemExit):
         tempo_filter(2.5)
+
+
+def test_a_long_narration_line_holds_the_steps_outcome_not_its_start():
+    from jev_demofast.render.assemble import stretch
+    seg = [{"hold": 1.0}, {"hold": 1.5}]            # before the click (outlined), then the result
+    stretch(seg, 6.0)
+    assert seg[0]["hold"] == 1.0 and seg[-1]["hold"] == 5.0
+    short = [{"hold": 2.0}]
+    stretch(short, 1.0)                              # footage already long enough: unchanged
+    assert short[0]["hold"] == 2.0

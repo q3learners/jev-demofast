@@ -40,6 +40,14 @@ def segments(frames):
     return trimmed
 
 
+def stretch(seg, need):
+    """Make a step's footage last as long as its narration line by holding its LAST frame, the step's outcome
+    (a confirmation, or an error message), so the screen shows what the narrator is describing."""
+    visual = sum(f["hold"] for f in seg)
+    if need > visual:
+        seg[-1]["hold"] += need - visual
+
+
 def music_filter(total, narration_input, music_input):
     """ffmpeg filter graph ending in [a]: the music looped to the video's length, faded in and out, and ducked under
     the narration (sidechain compression) when there is one."""
@@ -79,11 +87,9 @@ def assemble(work, output, clips_dir=None, gif=False, music=None, log=print):
     audio_dir = os.path.join(work, "audio")
     os.makedirs(audio_dir, exist_ok=True)
     for n, (name, seg) in enumerate(segs):
-        visual = sum(f["hold"] for f in seg)
         if clips:
             need = LEAD + media_length(clips[n]) + TAIL
-            if need > visual:
-                seg[0]["hold"] += need - visual
+            stretch(seg, need)
             total = sum(f["hold"] for f in seg)
             wav = os.path.join(audio_dir, f"s{n:02d}.wav")
             ffmpeg("-i", clips[n], "-af", f"adelay={int(LEAD * 1000)}:all=1,apad,atrim=0:{total:.3f},aresample=48000", "-ac", "2", wav)

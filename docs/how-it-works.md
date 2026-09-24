@@ -37,6 +37,9 @@ link first (0.62). With the index it completed the flow every time.
 - **Settle, then verify.** After a submit, the page counts as settled only after it's been unchanged for ~1.2 s,
   because the first change is often "Sending…". If Jev still isn't sure the goal is done, the tool waits once more
   and asks again.
+- **"Done" means the screen confirms it.** Inviting someone already on the team, the page said "User is already a
+  member of this team"; the page check scored 0.25, yet Jev's broader "what now?" question chose "done" (0.70). A
+  run now counts as verified only when the screen itself confirms the goal, so that flow reports `verified: False`.
 - **Act on a form only when sure.** Jev's calibrated confidence is used as a rule: at 0.25–0.28 it was about to
   submit a *login* form on the way to "Forgot password?"; requiring ≥ 0.5 sent it on instead.
 - **Guards.** Stay on the starting site; never click sign-up, third-party login, log-out or delete (unless the step
@@ -58,6 +61,10 @@ link first (0.62). With the index it completed the flow every time.
 ## Recording and narration
 
 - Frames from undone attempts never reach the video; each accepted step is one segment.
+- When a narration line is longer than its step's footage, the step's last frame (its outcome) is held, so the screen
+  shows the confirmation or error the narrator is describing, not the moment before the click.
+- A step whose submit wasn't confirmed is marked "not confirmed" for the script writer, and the script must say what
+  went wrong, quoting the on-screen message.
 - The script has a length budget: at most 20 words a line and about 11 words per segment, checked in code, with
   a retry that names the lines to shorten. Without it the GitHub demo's narration ran 192 words and a 107 s video;
   with it, 61-71 words and 36-43 s.

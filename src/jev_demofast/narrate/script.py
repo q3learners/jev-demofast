@@ -25,6 +25,9 @@ How a real presenter sounds:
 - Opening line: who you are showing and what they'll see. Closing line: land the value, briefly.
 - It's your own product: state what the screen says as fact ("you go from syllabus to live tutor in 15 minutes"),
   never "they claim" or "apparently".
+- Tell the truth about outcomes: if the screen shows an error or warning, or a segment's outcome says it was not
+  confirmed, say plainly what went wrong, quoting the on-screen message, and never describe a step as successful
+  unless the screen shows it succeeded.
 - Never say passwords, email addresses, account or user names shown on screen, "test account", "automation",
   "AI agent", "segment", or describe clicking in the abstract. Never introduce yourself by name.
 - Length is strict, because every word adds to the video's running time:
@@ -60,7 +63,7 @@ def too_long(by_id, ids):
     return problems
 
 
-NARRATOR_FIELDS = {"do", "target", "chose", "items", "url", "screen_title", "screen_text"}
+NARRATOR_FIELDS = {"do", "target", "chose", "items", "url", "screen_title", "screen_text", "outcome"}
 LINE = re.compile(r"^\W*(\d\d)\W*\|\s*(.*?)\s*\|\s*(.+?)\s*$")
 
 

@@ -1,4 +1,8 @@
-"""One client for every model call: Jev decisions, chat, embeddings, text-to-speech (Cloudflare Workers AI)."""
+"""One client for every model call: Jev decisions, chat, embeddings, text-to-speech.
+
+Jev, embeddings and voice run on Cloudflare Workers AI. Chat (route plans, page reading, scripts) goes to the
+configured OpenAI-compatible provider: Cloudflare by default, or Nebius Token Factory (JDF_LLM_PROVIDER=nebius).
+"""
 import json
 import math
 import re
@@ -37,8 +41,8 @@ class Cloudflare:
         if r.headers.get("content-type", "").startswith("audio/"):
             return r.content
         data = r.json()
-        if r.is_error or data.get("success") is False:
-            raise ModelError(f"{url.rsplit('/', 2)[-2:]}: {data.get('errors') or r.status_code}")
+        if r.is_error or data.get("success") is False:  # Cloudflare says "errors"; OpenAI-style APIs "error"/"detail"
+            raise ModelError(f"{url.rsplit('/', 2)[-2:]}: {data.get('errors') or data.get('error') or data.get('detail') or r.status_code}")
         return data
 
     # --- Jev: typed decisions -------------------------------------------------------------------------------
@@ -78,9 +82,10 @@ class Cloudflare:
     def chat(self, model, system, user, extra=None, max_tokens=4000):
         started = time.perf_counter()
         try:
-            data = self._post(f"{self.s.base}/v1/chat/completions", {
-                "model": model, "max_tokens": max_tokens, "temperature": 0.7, **(extra or {}),
-                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
+            data = self._post(self.s.llm_url, {
+                "model": model, "max_tokens": max_tokens, "temperature": 0.7, **self.s.llm_extra, **(extra or {}),
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
+                token=self.s.llm_token)
         finally:
             self.stats["llm_calls"] += 1
             self.stats["llm_seconds"] += time.perf_counter() - started

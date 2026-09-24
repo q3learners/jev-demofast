@@ -53,7 +53,11 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
                 mode = "navigate"  # calibrated confidence: act on a form only when Jev is sure it's the right one
             log(f"{ms():>6} ms  [{path}] Jev: {mode} ({conf:.2f})")
             if mode == "done":
-                result["verified"] = True
+                # "done" counts only if the screen itself confirms it: after a refused invite, Jev once chose "done"
+                # (0.70) on a page saying "User is already a member of this team" while the page check said 0.25.
+                result["verified"] = confirmed(cf, goal, page)
+                if not result["verified"]:
+                    log(f"{ms():>6} ms  NOT CONFIRMED: the screen doesn't show the goal accomplished; stopping")
                 break
             if mode == "act_here" and fields and path not in filled:
                 if _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
@@ -117,10 +121,7 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
     log(f"{ms():>6} ms    submit {b['label'][:30]!r} ({conf:.2f})")
     history.append(f"submitted '{b['label'][:40]}' on {state['screen']['url']}")
     for attempt in range(2):  # not confirmed yet? let the page settle once more and ask again before moving on
-        done = cf.yes("Does this screen confirm the goal was accomplished?",
-                      {"goal": goal, "just_did": f"submitted the form with '{b['label']}'",
-                       "visible_text": " ".join((page.get("text") or "").split())[:800]},
-                      true="the page confirms success", false="not confirmed yet, or an error")
+        done = confirm_score(cf, goal, page, f"submitted the form with '{b['label']}'")
         log(f"{ms():>6} ms  Jev: done? {done:.2f}")
         if done >= CONFIDENT or attempt or page["url"] != before_url:
             break  # moved to another page: that was a step of the goal, not its end, so no second wait
@@ -128,7 +129,25 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
     if done >= CONFIDENT and rec.out:  # the confirmation screen is the demo's last frame
         rec.snap(2.0)
         rec.commit({"do": "confirm", "target": "confirmation"}, page)
+    elif page["url"] == before_url and rec.actions:
+        # Still on the form's page and not confirmed: the submit failed or was refused. Tell the narrator, so the
+        # voice-over says what went wrong instead of describing a success. (A sign-in that moves to another page is
+        # a step of the goal, not a failure.)
+        rec.actions[-1]["outcome"] = "not confirmed: the page did not show success"
     return done >= CONFIDENT
+
+
+def confirm_score(cf, goal, page, just_did=None):
+    """Jev's probability that this screen confirms the goal was accomplished."""
+    state = {"goal": goal, "visible_text": " ".join((page.get("text") or "").split())[:800]}
+    if just_did:
+        state["just_did"] = just_did
+    return cf.yes("Does this screen confirm the goal was accomplished?", state,
+                  true="the page confirms success", false="not confirmed yet, or an error")
+
+
+def confirmed(cf, goal, page):
+    return confirm_score(cf, goal, page) >= CONFIDENT
 
 
 def _choose_options(cf, s, rec, goal, state, log, ms):
