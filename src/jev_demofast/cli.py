@@ -105,7 +105,7 @@ def cmd_narrate(a, cf=None):
     from .narrate import focus, script, voice
     from .render.assemble import assemble
     path = script.write(cf, a.work, product=a.product)
-    clips = voice.generate(cf, path, os.path.join(a.work, "voice"), speaker=a.voice)
+    clips = voice.generate(cf, path, os.path.join(a.work, "voice"), speaker=a.voice, speed=a.voice_speed)
     focused = focus.follow(cf, a.work, path, clips, os.path.join(a.work, "focused"))
     return assemble(focused, a.out, clips_dir=clips, gif=a.gif, music=getattr(a, "music", None))
 
@@ -178,7 +178,8 @@ def main(argv=None):
     d.add_argument("--out", default="demo.mp4")
     d.add_argument("--work", help="folder for frames (default: <out>.run)")
     d.add_argument("--gif", action="store_true")
-    d.add_argument("--voice", help="narrate with this Aura-2 voice, e.g. apollo")
+    d.add_argument("--voice", help="narrate with this Aura-2 voice, e.g. apollo or thalia")
+    d.add_argument("--voice-speed", type=float, default=1.0, help="speak faster or slower, same pitch (e.g. 1.2)")
     d.add_argument("--product", default="", help="one line about the product, for narration")
     d.add_argument("--music", metavar="FILE", help="background music (a track you have the rights to); ducked under the voice")
     d.set_defaults(fn=cmd_demo)
@@ -194,6 +195,7 @@ def main(argv=None):
     n.add_argument("work")
     n.add_argument("--out", required=True)
     n.add_argument("--voice", default="apollo")
+    n.add_argument("--voice-speed", type=float, default=1.0, help="speak faster or slower, same pitch (e.g. 1.2)")
     n.add_argument("--product", default="")
     n.add_argument("--gif", action="store_true")
     n.add_argument("--music", metavar="FILE", help="background music (a track you have the rights to); ducked under the voice")

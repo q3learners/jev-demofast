@@ -50,8 +50,8 @@ DEMO_PASSWORD='...' uv run jev-demofast demo "Reset my password for test@example
 With an index, **Jev drives on its own**; no LLM plans the route. Without one, an LLM plans the route once and Jev
 handles every step that needs judgment.
 
-**Narrated:** add `--voice apollo` for a Deepgram Aura-2 voice (about $0.03 per 1,000 characters), with or without
-`--index`. The script is written from what was actually on screen and kept short (about 11 words per step), and on
+**Narrated:** add `--voice apollo` (or a female voice such as `thalia`) for a Deepgram Aura-2 voice (about $0.03 per
+1,000 characters), with or without `--index`. `--voice-speed 1.2` speaks faster at the same pitch. The script is written from what was actually on screen and kept short (about 11 words per step), and on
 runs without an index the camera pans to whatever each line talks about. Add `--music track.mp3` for a background
 bed: it plays alone for 2 s before the narrator starts and after they finish, loops to the video's length, and
 dips gently whenever the narrator speaks (the voice is also softened to sit inside it). Use a track

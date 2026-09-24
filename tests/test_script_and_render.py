@@ -44,3 +44,12 @@ def test_music_gets_an_intro_and_outro_before_and_after_the_voice():
     frames = [{"hold": 1.0}, {"hold": 2.0}]
     music_bookends(frames)
     assert frames[0]["hold"] == 1.0 + MUSIC_INTRO and frames[-1]["hold"] == 2.0 + MUSIC_OUTRO
+
+
+def test_voice_speed_is_a_pitch_preserving_tempo_within_range():
+    import pytest
+    from jev_demofast.narrate.voice import tempo_filter
+    assert tempo_filter(1.2) == "atempo=1.200"
+    assert tempo_filter(1.0) is None
+    with pytest.raises(SystemExit):
+        tempo_filter(2.5)
