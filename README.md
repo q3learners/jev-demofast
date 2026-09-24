@@ -6,7 +6,8 @@ are made by [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev
 model. On your own app, Jev is guided by a map of every screen built from your source code.
 
 **See it run:** [onecentdemo.com](https://onecentdemo.com) replays two real runs, decision by decision, then plays the
-narrated videos they produced.
+narrated videos they produced. **Read the story:** [Jev couldn't find the password reset form. Then we gave it a
+map.](https://www.linkedin.com/pulse/jev-couldnt-find-password-reset-form-we-gave-map-venkat-podugu-p23fe/)
 
 ![GitHub trending demo, generated from one sentence](docs/github-trending.gif)
 
