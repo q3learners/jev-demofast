@@ -107,12 +107,12 @@ def cmd_narrate(a, cf=None):
     path = script.write(cf, a.work, product=a.product)
     clips = voice.generate(cf, path, os.path.join(a.work, "voice"), speaker=a.voice)
     focused = focus.follow(cf, a.work, path, clips, os.path.join(a.work, "focused"))
-    return assemble(focused, a.out, clips_dir=clips, gif=a.gif)
+    return assemble(focused, a.out, clips_dir=clips, gif=a.gif, music=getattr(a, "music", None))
 
 
 def cmd_render(a):
     from .render.assemble import assemble
-    return assemble(a.work, a.out, gif=a.gif)
+    return assemble(a.work, a.out, gif=a.gif, music=getattr(a, "music", None))
 
 
 def cmd_demo(a):
@@ -180,6 +180,7 @@ def main(argv=None):
     d.add_argument("--gif", action="store_true")
     d.add_argument("--voice", help="narrate with this Aura-2 voice, e.g. apollo")
     d.add_argument("--product", default="", help="one line about the product, for narration")
+    d.add_argument("--music", metavar="FILE", help="background music (a track you have the rights to); ducked under the voice")
     d.set_defaults(fn=cmd_demo)
 
     r = sub.add_parser("run", help="drive and record only")
@@ -195,12 +196,14 @@ def main(argv=None):
     n.add_argument("--voice", default="apollo")
     n.add_argument("--product", default="")
     n.add_argument("--gif", action="store_true")
+    n.add_argument("--music", metavar="FILE", help="background music (a track you have the rights to); ducked under the voice")
     n.set_defaults(fn=cmd_narrate)
 
     v = sub.add_parser("render", help="frames → MP4 (+ GIF)")
     v.add_argument("work")
     v.add_argument("--out", required=True)
     v.add_argument("--gif", action="store_true")
+    v.add_argument("--music", metavar="FILE", help="background music (a track you have the rights to); ducked under the voice")
     v.set_defaults(fn=cmd_render)
 
     a = p.parse_args(argv)

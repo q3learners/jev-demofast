@@ -29,3 +29,18 @@ def test_too_long_names_lines_over_the_cap_and_the_budget():
     many = {f"{i:02d}": ("S", " ".join(["w"] * 19)) for i in range(6)}  # every line under the cap, total over budget
     problems = too_long(many, sorted(many))
     assert problems and "total" in problems[-1]
+
+
+def test_music_bed_ducks_under_narration_and_fades():
+    from jev_demofast.render.assemble import music_filter
+    narrated = music_filter(total=30.0, narration_input=1, music_input=2)
+    assert "sidechaincompress" in narrated and "afade=t=out:st=28.00" in narrated and narrated.endswith("[a]")
+    silent = music_filter(total=12.0, narration_input=None, music_input=1)
+    assert "sidechaincompress" not in silent and "afade=t=in" in silent
+
+
+def test_music_gets_an_intro_and_outro_before_and_after_the_voice():
+    from jev_demofast.render.assemble import MUSIC_INTRO, MUSIC_OUTRO, music_bookends
+    frames = [{"hold": 1.0}, {"hold": 2.0}]
+    music_bookends(frames)
+    assert frames[0]["hold"] == 1.0 + MUSIC_INTRO and frames[-1]["hold"] == 2.0 + MUSIC_OUTRO

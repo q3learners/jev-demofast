@@ -10,6 +10,10 @@ import subprocess
 
 LEAD, TAIL = 0.35, 0.6  # seconds of quiet before and after each narration line
 PENDING_FRAMES_KEPT = 3
+MUSIC_UNDER_VOICE, MUSIC_ALONE = 0.4, 0.6  # background music level with and without narration
+MUSIC_FADE_IN, MUSIC_FADE_OUT = 0.6, 2.0
+MUSIC_INTRO, MUSIC_OUTRO = 2.0, 2.0  # seconds of music alone before the first line and after the last
+VOICE_LUFS, VOICE_OVER_MUSIC_LUFS = -16, -19  # narration loudness alone, and softer when it sits in music
 
 
 def media_length(path):
@@ -36,11 +40,35 @@ def segments(frames):
     return trimmed
 
 
+def music_filter(total, narration_input, music_input):
+    """ffmpeg filter graph ending in [a]: the music looped to the video's length, faded in and out, and ducked under
+    the narration (sidechain compression) when there is one."""
+    fades = (f"atrim=0:{total:.2f},afade=t=in:d={MUSIC_FADE_IN},"
+             f"afade=t=out:st={max(0.0, total - MUSIC_FADE_OUT):.2f}:d={MUSIC_FADE_OUT}")
+    if narration_input is None:
+        return f"[{music_input}:a]{fades},volume={MUSIC_ALONE}[a]"
+    return (f"[{music_input}:a]{fades},volume={MUSIC_UNDER_VOICE},aresample=48000[m];"
+            f"[{narration_input}:a]loudnorm=I={VOICE_OVER_MUSIC_LUFS}:TP=-2:LRA=11,aresample=48000,asplit[n][key];"
+            f"[m][key]sidechaincompress=threshold=0.03:ratio=2.5:attack=30:release=600[ducked];"
+            f"[n][ducked]amix=inputs=2:duration=first:normalize=0[a]")
+
+
+def music_bookends(frames):
+    """Hold the first and last frames longer, so the music plays alone before the narrator starts and after they end."""
+    frames[0]["hold"] += MUSIC_INTRO
+    frames[-1]["hold"] += MUSIC_OUTRO
+
+
+def silence(path, seconds):
+    ffmpeg("-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo", "-t", f"{seconds:.3f}", path)
+    return path
+
+
 def clip_files(folder):
     return sorted(glob.glob(os.path.join(folder, "[0-9][0-9].mp3")) + glob.glob(os.path.join(folder, "[0-9][0-9].aiff")))
 
 
-def assemble(work, output, clips_dir=None, gif=False, log=print):
+def assemble(work, output, clips_dir=None, gif=False, music=None, log=print):
     work, output = os.path.abspath(work), os.path.abspath(output)
     with open(os.path.join(work, "frames.json")) as f:
         segs = segments(json.load(f))
@@ -61,6 +89,10 @@ def assemble(work, output, clips_dir=None, gif=False, log=print):
             ffmpeg("-i", clips[n], "-af", f"adelay={int(LEAD * 1000)}:all=1,apad,atrim=0:{total:.3f},aresample=48000", "-ac", "2", wav)
             padded.append(wav)
         concat.extend(seg)
+    if music and padded:
+        music_bookends(concat)
+        padded = [silence(os.path.join(audio_dir, "intro.wav"), MUSIC_INTRO), *padded,
+                  silence(os.path.join(audio_dir, "outro.wav"), MUSIC_OUTRO)]
     frame_list = os.path.join(work, "concat.txt")
     with open(frame_list, "w") as f:
         for frame in concat:
@@ -68,15 +100,26 @@ def assemble(work, output, clips_dir=None, gif=False, log=print):
         f.write(f"file '{concat[-1]['path']}'\n")
     video = ["-f", "concat", "-safe", "0", "-i", frame_list]
     encode = ["-vf", "scale=1920:-2:flags=lanczos,fps=30,format=yuv420p", "-c:v", "libx264", "-crf", "20", "-preset", "slow"]
+    aac = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-shortest", "-movflags", "+faststart"]
     os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
+    total = sum(f["hold"] for f in concat)
+    narration = None
     if padded:
         audio_list = os.path.join(work, "audio.txt")
         with open(audio_list, "w") as f:
             f.writelines(f"file '{p}'\n" for p in padded)
         narration = os.path.join(work, "narration.wav")
         ffmpeg("-f", "concat", "-safe", "0", "-i", audio_list, "-c:a", "pcm_s16le", narration)
-        ffmpeg(*video, "-i", narration, *encode, "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
-               "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-shortest", "-movflags", "+faststart", output)
+    if music:
+        loop = ["-stream_loop", "-1", "-i", os.path.abspath(music)]
+        if narration:
+            ffmpeg(*video, "-i", narration, *loop, *encode, "-filter_complex", music_filter(total, 1, 2),
+                   "-map", "0:v", "-map", "[a]", *aac, output)
+        else:
+            ffmpeg(*video, *loop, *encode, "-filter_complex", music_filter(total, None, 1),
+                   "-map", "0:v", "-map", "[a]", *aac, output)
+    elif narration:
+        ffmpeg(*video, "-i", narration, *encode, "-af", f"loudnorm=I={VOICE_LUFS}:TP=-1.5:LRA=11", *aac, output)
     else:
         ffmpeg(*video, *encode, "-movflags", "+faststart", output)
     log(f"video {media_length(output):.1f}s → {output}")
