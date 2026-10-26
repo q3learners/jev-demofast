@@ -17,6 +17,15 @@ The site explorer closes that gap: given a URL, it browses the live site **once,
 kind of map. Demos then drive from the map, as they do from a source-code map. This is the second of the two scenarios
 for the hosted service (a repo, or a URL plus logins); the hosted service itself comes later.
 
+**Where it leads:** the explorer is the foundation for the roadmap agreed on 26 October: demos that re-record on
+every release and flag broken flows; one map and storyline turned into versions for every audience (investor cut,
+social clip, per industry, other languages, clickable); and "ask the product", where a visitor on the founder's
+site asks a question and watches a live, narrated demo. All three need the map.
+
+**Timeline:** build through Wednesday 29 October; Thursday morning is for wrapping up and submitting to the
+Nebius x NVIDIA hackathon (closes 30 October, 10:00 PT). What isn't done by then waits; nothing is rushed past the
+anti-goals below.
+
 Built ahead of time, not during each demo, because a good map needs every menu opened and each screen type seen once:
 minutes, not seconds. One map serves many demos until the site changes.
 
