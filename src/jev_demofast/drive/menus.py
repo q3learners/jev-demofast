@@ -7,6 +7,7 @@ import time
 from urllib.parse import urlparse
 
 from ..browser.elements import words
+from ..index import route_for, summary
 from .guards import blocked, on_site, stop_if_dry_run
 from .popups import clear_popups
 from .session import StalePage, fingerprint
@@ -67,7 +68,15 @@ def _open(s, rec, opener, menu, how):
     return _items_on_screen(s, menu)
 
 
-def open_menu(cf, s, rec, opener, menu, goal, state, log):
+def _where(s, e, menu, index):
+    """What the item's screen is, from the map: a listing with filters reads very differently from one product."""
+    href = s.href(e["node"])
+    to = urlparse(href).path if href else next((i["to"] for i in menu["items"] if words(i["label"]) == words(e["label"])),
+                                               None)
+    return f" → {to}: {summary(route_for(to, index), index, 4)}" if to and index else ""
+
+
+def open_menu(cf, s, rec, opener, menu, goal, state, log, index=None):
     """Open the menu on camera and click the item Jev picks. Returns the clicked item's label; None if the menu showed
     none of its items; LEFT_SITE if the item led off the site. Items get the same guards as any click: blocked labels
     and off-site links are never offered, and a dry run stops before one that would change data."""
@@ -85,8 +94,8 @@ def open_menu(cf, s, rec, opener, menu, goal, state, log):
         return None
     rec.snap(0.8)
     rec.commit({"do": how, "target": f"open the {opener['label']} menu"}, s.page)
-    key, conf = cf.choose("Which menu item moves toward the goal?", {str(e["node"]): e["label"][:60] for e in items},
-                          state)
+    key, conf = cf.choose("Which menu item moves toward the goal?",
+                          {str(e["node"]): (e["label"][:60] + _where(s, e, menu, index))[:300] for e in items}, state)
     item = next(e for e in items if str(e["node"]) == key)
     stop_if_dry_run(rec, item, s)
     rec.snap(1.2, node=item["node"])

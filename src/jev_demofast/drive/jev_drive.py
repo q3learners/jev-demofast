@@ -253,7 +253,7 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, 
     e, where = next(o for o in options if str(o[0]["node"]) == key)
     tried.add((path, e["node"]))
     if e["node"] in menus:
-        item = open_menu(cf, s, rec, e, menus[e["node"]], goal, state, log)
+        item = open_menu(cf, s, rec, e, menus[e["node"]], goal, state, log, index)
         if item is LEFT_SITE:
             log(f"GUARD: left {s.host}; stopped")
             return False

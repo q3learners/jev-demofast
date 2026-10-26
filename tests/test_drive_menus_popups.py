@@ -138,7 +138,7 @@ def test_menu_items_that_are_blocked_or_off_site_are_not_offered(monkeypatch, tm
     monkeypatch.setattr(jev_drive, "Session", lambda url, fresh=False: Guarded(url))
     jev_drive.run(Watch(), "https://shop.test/", "find running shoes", {**MAP, "_site": {"menus": [menu]}},
                   out=str(tmp_path), log=lambda m: None)
-    assert offered == ["Running"]
+    assert [o.split(" → ")[0] for o in offered] == ["Running"]
 
 
 def test_a_menu_item_that_leaves_the_site_stops_the_run(monkeypatch, tmp_path):
@@ -253,3 +253,22 @@ def test_a_menu_item_is_matched_by_destination_not_only_by_label(monkeypatch, tm
     jev_drive.run(Watch(), "https://shop.test/", "new arrivals for men", {**MAP, "_site": {"menus": [menu]}},
                   out=str(tmp_path), max_steps=1, log=lambda m: None)
     assert offered == ["8"]
+
+
+def test_menu_items_say_where_they_lead(monkeypatch, tmp_path):
+    """Live: Jev picked a single product ("Runner NZ", 0.32) from the Men menu over category listings, because the
+    items were offered as bare labels. Each item now says what its screen is, from the map."""
+    menu = {"opener": "Men", "opens_on": "hover", "items": [{"label": "Running", "to": "/collections/mens-running"}]}
+    offered = []
+
+    class Watch(Cf):
+        def choose(self, instructions, options, state, allow_none=False):
+            if instructions.startswith("Which menu item"):
+                offered.extend(options.values())
+            return super().choose(instructions, options, state, allow_none)
+    index = {**MAP, "_site": {"menus": [menu]}}
+    index["/collections/:handle"] = {**MAP["/collections/:handle"],
+                                     "filters": [{"group": "Product Type"}, {"group": "Price"}]}
+    monkeypatch.setattr(jev_drive, "Session", lambda url, fresh=False: Shop(url))
+    jev_drive.run(Watch(), "https://shop.test/", "find running shoes", index, out=str(tmp_path), log=lambda m: None)
+    assert offered and "filters: Product Type, Price" in offered[0] and offered[0].startswith("Running")
