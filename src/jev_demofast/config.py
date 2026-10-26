@@ -14,9 +14,10 @@ class Settings:
     jev_token: str
     # Models (all Cloudflare Workers AI). Override with env vars of the same name, upper-cased with JDF_ prefix.
     jev_model: str = "typesafe/jev"
-    # Checks that a read step's answer is really on screen. Empty means jev_model. A Clef model
-    # (@cf/cloudflare/clef) also gets a screenshot: in tests it caught a wrong "done" that page text alone missed.
-    check_model: str = ""
+    # Checks that a run really got there (drive/check.py). Clef also gets a screenshot. On 9 recorded GitHub endings
+    # only Clef with the screenshot told Trending set to 'Today' (0.34-0.64) from the right pages (0.86-0.98) at 0.75:
+    # Jev rejected real repository pages (0.24-0.28), Clef on text alone accepted 'Today' (0.79-0.89).
+    check_model: str = "@cf/cloudflare/clef"
     # Route plans: GLM-5.3-flash (reasoning low) gave the same sensible plan 3/3; Llama 3.3 varied run to run.
     plan_model: str = "@cf/zai-org/glm-5.3-flash"
     plan_extra: dict = field(default_factory=lambda: {"reasoning_effort": "low"})
@@ -89,8 +90,6 @@ def load(require_cloudflare=True) -> Settings:
     overrides.update(_llm_provider(overrides))
     settings = Settings(account_id=account, api_token=token, jev_token=os.environ.get("JEV_TOKEN") or token,
                         cdp_url=os.environ.get("BU_CDP_URL", "http://127.0.0.1:9333"), **overrides)
-    if not settings.check_model:
-        settings = replace(settings, check_model=settings.jev_model)
     if not settings.llm_url:  # Cloudflare Workers AI's OpenAI-compatible endpoint
         settings = replace(settings, llm_url=f"{settings.base}/v1/chat/completions", llm_token=token)
     return settings

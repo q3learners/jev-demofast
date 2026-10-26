@@ -75,3 +75,14 @@ def test_a_stuck_run_tells_the_narrator_it_did_not_finish(monkeypatch, tmp_path)
     assert result["verified"] is False
     last = json.loads((tmp_path / "actions.json").read_text())["actions"][-1]
     assert last["outcome"].startswith("not confirmed") and "Pricing" in last["outcome"]
+
+
+def test_a_bare_number_as_the_next_step_doesnt_undo_the_click_before_it():
+    """'This week' was clicked correctly; the plan's next target '1' says nothing checkable, so the click stands."""
+    steps = [{"do": "click", "target": "This week"}, {"do": "click", "target": "1"}]
+
+    class NoJev:
+        def choose(self, instructions, options, state, allow_none=False):
+            return None, 0.0
+    page = {"url": "https://github.com/trending?since=weekly", "title": "Trending", "actions": []}
+    assert Picker(NoJev(), "jev").lookahead(FakeSession(page), steps, 0, "goal", polls=1) == 1

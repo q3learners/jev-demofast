@@ -18,11 +18,11 @@ def env(monkeypatch, **values):
         monkeypatch.setenv(k, v)
 
 
-def test_the_check_uses_jev_unless_a_check_model_is_set(monkeypatch):
+def test_the_checks_use_clef_with_screenshots_unless_another_model_is_set(monkeypatch):
     env(monkeypatch)
-    assert load().check_model == "typesafe/jev"
-    env(monkeypatch, JDF_CHECK_MODEL="@cf/cloudflare/clef")
     assert load().check_model == "@cf/cloudflare/clef"
+    env(monkeypatch, JDF_CHECK_MODEL="typesafe/jev")
+    assert load().check_model == "typesafe/jev"
 
 
 def posts(monkeypatch, cf):
@@ -35,7 +35,7 @@ def posts(monkeypatch, cf):
 
 
 def test_jev_is_asked_with_text_only(monkeypatch):
-    env(monkeypatch)
+    env(monkeypatch, JDF_CHECK_MODEL="typesafe/jev")
     cf = Cloudflare(load())
     sent = posts(monkeypatch, cf)
     assert cf.yes("Shown?", {"x": 1}, model=cf.s.check_model, images=[b"\xff\xd8jpeg"]) == 0.2
@@ -122,3 +122,22 @@ def test_navigator_verifies_a_read_only_when_the_check_agrees(monkeypatch, tmp_p
     assert result["verified"] is verified
     last = json.loads((tmp_path / "actions.json").read_text())["actions"][-1]
     assert ("outcome" in last) is (not verified)
+
+
+def test_an_information_goal_also_needs_the_screen_in_the_state_asked_for(monkeypatch, tmp_path):
+    """Trending set to 'Today' showed real repositories for a 'this week' goal: the content passes, the state doesn't."""
+    monkeypatch.setattr(navigator, "FINAL_REPLANS", 0)
+    monkeypatch.setattr(navigator, "Session", ReadSession)
+    monkeypatch.setattr(navigator, "make_plan", lambda cf, goal, page, done=None: {
+        "steps": [{"do": "read", "target": "trending repositories"}], "done_text": ""})
+    monkeypatch.setattr(navigator, "extract", lambda cf, what, url, text: ["ruvnet / ruflo"])
+    scores = [0.94, 0.64]  # content real; final screen in the wrong time range (Clef + screenshot on 'Today')
+
+    class Cf(FakeCf):
+        stats = {"jev_calls": 0, "jev_seconds": 0.0, "llm_calls": 0, "llm_seconds": 0.0}
+        decisions = []
+        def yes(self, instructions, state, true="yes", false="no", model=None, images=None):
+            return scores.pop(0)
+    result = navigator.run(Cf(0), "https://github.com/", "find trending repos this week", out=str(tmp_path),
+                           picker="keyword", log=lambda m: None)
+    assert result["verified"] is False and scores == []
