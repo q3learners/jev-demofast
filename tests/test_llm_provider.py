@@ -110,3 +110,8 @@ def test_a_failed_route_plan_is_retried_once():
 
     plan = make_plan(FakeCf(), "find trending repos", {"url": "https://github.com/", "actions": []})
     assert plan["steps"] == [{"do": "click", "target": "Trending"}] and not replies
+
+
+def test_the_planner_prefers_the_sites_navigation_over_its_search_box():
+    from jev_demofast.drive.plan import PLAN
+    assert "Prefer the site's own navigation" in PLAN and "search only" in PLAN
