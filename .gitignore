@@ -11,3 +11,4 @@ out/
 !docs/*.gif
 *.run/
 .pytest_cache/
+app-index.json
