@@ -34,6 +34,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
         steps, done_text = plan["steps"], plan["done_text"]
         log(f"{ms():>6} ms  plan: " + " → ".join(f"{st['do']} {st['target']!r}" for st in steps))
         i, actions, replans, reveals, failed, done, stale = 0, 0, 0, {}, set(), [], {}
+        why = "it ran out of steps"  # what the narration says if the goal isn't reached
         while i < len(steps) and actions < max_steps:
             step, page = steps[i], s.page
             if step["do"] == "read":
@@ -64,6 +65,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                     continue
                 # Fail closed: a secret is never typed into a visible field a model picked.
                 log(f"{ms():>6} ms  STUCK: no password field for {step['target']!r}; a secret is never typed elsewhere")
+                why = f"there was no password field for {step['target']!r}"
                 break
             els = [e for e in s.elements() if kind in e["actions"] and (page["url"], e["node"]) not in failed
                    and not blocked(e["label"], unless=step["target"])]
@@ -95,6 +97,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                     log(f"{ms():>6} ms  re-plan: " + " → ".join(f"{st['do']} {st['target']!r}" for st in steps))
                     continue
                 log(f"{ms():>6} ms  STUCK: nothing on the page means {step['target']!r}")
+                why = f"nothing on the page matched {step['target']!r}"
                 break
             prev_url = page["url"]
             if dry_run and kind == "click" and would_change(chosen):
@@ -123,6 +126,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
             if not on_site(page["url"], s.host):
                 log(f"{ms():>6} ms  GUARD: left {s.host}; stopped")
                 rec.discard()
+                why = f"a click led away from {s.host}"
                 break
             last_action = all(st["do"] == "read" for st in steps[i + 1:])  # finish text only counts at the end
             if done_text and last_action and done_text in (page.get("text") or "").lower():
@@ -161,6 +165,12 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
             s.settle(s.page.get("text") or "", max_s=6)
             result["verified"] = done_text in (s.page.get("text") or "").lower()
             log(f"{ms():>6} ms  {'VERIFIED' if result['verified'] else 'UNVERIFIED'}: finish text {done_text!r}")
+        if i >= len(steps):
+            why = (f"the page never showed {done_text!r}" if done_text else
+                   "the page didn't show the information asked for" if steps and steps[-1]["do"] == "read" else
+                   "nothing on the page confirmed the goal")
+        if not result["verified"]:
+            rec.unconfirmed(why)
     except DryRunStop as stop:
         result["would_click"] = str(stop)
         log(f"{ms():>6} ms  DRY RUN: stopped before {str(stop)!r}; nothing was changed")

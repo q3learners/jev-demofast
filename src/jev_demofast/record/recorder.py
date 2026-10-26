@@ -88,6 +88,12 @@ class Recorder:
                       **(self.page_map(segment) if self.page_maps else {})}
         self.actions.append({"segment": segment, **action})
 
+    def unconfirmed(self, why):
+        """The run ended without reaching its goal: say so on the last segment, so the narration never describes
+        a success the screen doesn't show. An earlier, more specific outcome on that segment is kept."""
+        if self.actions and "outcome" not in self.actions[-1]:
+            self.actions[-1]["outcome"] = f"not confirmed: {why}"
+
     def discard(self):
         self.pending = []
 

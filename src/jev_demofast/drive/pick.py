@@ -13,6 +13,11 @@ from .guards import blocked
 CONFIDENT = 0.5
 
 
+def specific(target):
+    """True if the target has a word that isn't a number: only such a target can prove a later step is on screen."""
+    return any(not w.isdigit() for w in words(target))
+
+
 class Picker:
     def __init__(self, cf, mode="jev"):
         if mode not in ("keyword", "hybrid", "jev"):
@@ -55,6 +60,8 @@ class Picker:
         if full:
             key, conf = self.cf.choose(f"Goal: {goal}. Next step: {kind} '{target}'. Which element is it?",
                                        {str(e["node"]): describe(e) for e in ranked}, self._state(page, goal))
+            if conf < CONFIDENT:  # every word matched, but the words say little (a plan target of just "1")
+                return None, conf, "none"
             return next(e for e in ranked if str(e["node"]) == key), conf, "jev"
         # Jev unsure and only a partial keyword match: report "not found" (→ reveal, then re-plan with the real
         # labels) rather than click something that merely shares a word with the target.
@@ -89,6 +96,8 @@ class Picker:
             for j in ahead:
                 target, jkind = steps[j]["target"], "fill" if steps[j]["do"] == "fill" else "click"
                 need = 1 if j == i + 1 else max(1, len(words(target)))
+                if j > i + 1 and not specific(target):  # "1" matches any star count: no reason to skip a step
+                    continue
                 if any(relevance(e, target) >= need for e in els if jkind in e["actions"]):
                     return j
             # 2. then a judgment for the immediate next step only: a synonym on screen, or one menu-open away
