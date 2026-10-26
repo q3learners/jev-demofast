@@ -7,7 +7,7 @@ frame) hid the whole page from the tool and closed on Escape; Allbirds' didn't, 
 import re
 
 from ..browser.elements import describe
-from .guards import blocked, would_change
+from .guards import blocked, on_site, would_change
 
 BOT_CHECK = re.compile(r"access denied|captcha|verify you are (a )?human|are you a robot|press (&|and) hold|"
                        r"just a moment|unusual (traffic|activity)|request blocked|pardon our interruption", re.I)
@@ -57,8 +57,10 @@ def clear_popups(cf, s, log=print):
     if not covered(s):
         log("pop-up: closed with Escape")
         return "escape"
+    href = getattr(s, "href", lambda node: None)
     closers = [e for e in s.elements() if "click" in e["actions"] and e["role"] in ("button", "link")
-               and not blocked(e["label"]) and not SIGN_UP.search(e["label"] or "") and not would_change(e)]
+               and not blocked(e["label"]) and not SIGN_UP.search(e["label"] or "") and not would_change(e)
+               and (not href(e["node"]) or on_site(href(e["node"]), s.host if hasattr(s, "host") else ""))]
     if not closers or cf is None:
         log("pop-up: still covering the page; no safe control to close it")
         return None
@@ -70,9 +72,16 @@ def clear_popups(cf, s, log=print):
     if e is None or conf < 0.5:
         log(f"pop-up: no control clearly closes it ({conf:.2f}); left as is")
         return None
+    before = s.page["url"]
     s.act(e, "click")
     s.wait_for_page()
     s.observe()
+    if s.page["url"] != before:  # it navigated: that wasn't a close button; go back to where the demo was
+        s.browser.call("Page.navigate", url=before)
+        getattr(s, "wait_loaded", lambda: None)()
+        s.observe()
+        log(f"pop-up: {e['label'][:30]!r} navigated away; went back")
+        return None
     if covered(s):
         log(f"pop-up: clicking {e['label'][:30]!r} didn't close it")
         return None

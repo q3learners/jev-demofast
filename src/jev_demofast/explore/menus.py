@@ -3,7 +3,7 @@ button. A link is never clicked here (that navigates away). Menus didn't announc
 of the four shops in the recon, so a menu is whatever reveals new links."""
 import time
 
-from ..drive.guards import blocked
+from ..drive.guards import blocked, would_change
 
 import re
 
@@ -64,7 +64,7 @@ def discover_menus(s, log=print, max_openers=12):
     for e in _openers(s, max_openers):
         base = _links(s)  # fresh each time: a menu that didn't close (Allbirds') isn't credited to the next opener
         for how in ("hover", "click"):
-            if how == "click" and e["role"] != "button":
+            if how == "click" and (e["role"] != "button" or would_change(e)):  # exploring never changes anything
                 break
             try:
                 s.hover(e) if how == "hover" else s.act(e, "click")

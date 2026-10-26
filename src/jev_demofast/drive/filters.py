@@ -7,6 +7,7 @@ from urllib.parse import parse_qsl, urlparse
 
 from ..browser.elements import words
 from .guards import blocked, on_site, stop_if_dry_run
+from .popups import clear_popups
 from .session import StalePage
 
 LEFT_SITE = "left the site"
@@ -22,7 +23,9 @@ band within it (e.g. under $100: "Under $75" and "$76 - $100"). Only what the go
 DISABLED_JS = """[...document.querySelectorAll('input[type=checkbox]:disabled,input[type=radio]:disabled')]
   .map(e => (e.labels?.[0]?.innerText || e.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim())
   .filter(Boolean)"""
-LOW_HINT, HIGH_HINT = {"gte", "min", "from", "low"}, {"lte", "max", "to", "high"}
+# Price boxes say "From"/"To" (Shopify's Dawn), "Min"/"Max", or gte/lte in their names.
+LOW = re.compile(r"\b(min(imum)?|from|low(est)?)\b|gte", re.I)
+HIGH = re.compile(r"\b(max(imum)?|to|high(est)?)\b|lte", re.I)
 
 
 def choose_filters(cf, goal, filters, sort=None):
@@ -100,6 +103,7 @@ def apply_filters(cf, s, rec, goal, entry, log=print, unavailable=None):
     by_group = {f["group"]: f for f in entry.get("filters", [])}
     expected = []
     for c in choices["checks"]:
+        clear_popups(cf, s, log)  # filtering takes 10-20 s: a timed pop-up can land between filters
         e, disabled = _settled_find(s, c["value"])
         if disabled:  # known from the page: no panel or heading clicked looking for it
             log(f"  filter {c['group']}: {c['value']!r} is unavailable (the site has no results for it here)")
@@ -133,21 +137,31 @@ def apply_filters(cf, s, rec, goal, entry, log=print, unavailable=None):
             return None
         if clicked:
             log(f"  filter {c['group']}: {c['value']}")
-            if by_group[c["group"]]["param"]:
-                expected.append(f"{by_group[c['group']]['param']}={c['value']}")
+            group = by_group[c["group"]]
+            if group["param"]:  # the URL carries the input's value, which may differ from its label
+                expected.append(f"{group['param']}={group.get('url_values', {}).get(c['value'], c['value'])}")
     for r in choices["ranges"]:
+        clear_popups(cf, s, log)
         s.observe()
         boxes = [e for e in s.elements() if "fill" in e["actions"]]
-        for bound, hints in (("min", LOW_HINT), ("max", HIGH_HINT)):
+        for bound, pattern in (("min", LOW), ("max", HIGH)):
             if not r.get(bound):
                 continue
-            box = next((e for e in boxes if words(f"{e['label']} {e.get('hint', '')}") & hints
+            box = next((e for e in boxes if pattern.search(f"{e['label']} {e.get('hint', '')}")
                         and not blocked(e["label"])), None)
             if box is None:
+                log(f"  filter {r['group']}: no {bound} box on screen; skipped")
                 continue
             rec.snap(1.0, node=box["node"])
-            s.act(box, "fill", text=str(r[bound]))
-            s.browser.call("Input.dispatchKeyEvent", type="keyDown", key="Enter", code="Enter", windowsVirtualKeyCode=13)
+            try:
+                s.act(box, "fill", text=str(r[bound]))
+            except StalePage:
+                rec.discard()
+                log(f"  filter {r['group']}: the {bound} box changed under us; skipped")
+                continue
+            for kind in ("keyDown", "keyUp"):
+                s.browser.call("Input.dispatchKeyEvent", type=kind, key="Enter", code="Enter", windowsVirtualKeyCode=13,
+                               **({"text": "\r"} if kind == "keyDown" else {}))
             s.wait_for_page()
             if not on_site(s.observe()["url"], s.host):
                 rec.discard()

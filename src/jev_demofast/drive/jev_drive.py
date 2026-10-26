@@ -98,6 +98,18 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
                     log(f"{ms():>6} ms  NOT CONFIRMED: the screen doesn't show the goal accomplished; stopping")
                     why = "the screen didn't show the goal accomplished"
                 break
+            if mode == "act_here" and fields and path not in filled and explored:
+                # An explored map never verifies through the text check: a search box's results page reading "results
+                # for running shoes under $100" fooled it. The form goes through the screenshot check like the rest.
+                _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms, need_values=True)
+                filled.add(path)
+                ok, score = _explored_verdict(cf, goal, s, expected)
+                log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: the screen shows the goal? {score:.2f}")
+                if ok:
+                    result["verified"] = True
+                    showcase(cf, s, rec, goal, log)
+                    break
+                continue
             if mode == "act_here" and fields and path not in filled:
                 if _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
                     result["verified"] = True
@@ -121,7 +133,7 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     return result
 
 
-def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
+def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms, need_values=False):
     """Fill the fields the goal gives values for, submit, settle, and ask Jev whether it's done."""
     values = cf.chat_json(cf.s.read_model, VALUES, {
         "goal": goal, "already_done": history[-6:], "fields": [e["label"] for e in fields],
@@ -138,6 +150,8 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
         rec.commit({"do": "fill", "target": e["label"]}, s.observe())
         log(f"{ms():>6} ms    fill {e['label'][:30]!r}")
         history.append(f"filled {e['label'][:40]} on {state['screen']['url']}")
+    if need_values and not any(values.get(e["label"]) for e in fields):  # nothing to type: don't press submit blindly
+        return False
     # Passwords are hidden from observation by design: type a {{NAME}} secret from the goal straight into the field.
     secret = password_secret(goal)
     if secret and s.type_secret_into_password(fill_text("{{" + secret + "}}")):
@@ -182,6 +196,7 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
 def _explored_verdict(cf, goal, s, expected):
     """Explored maps: the screen must show the goal (Clef + screenshot, 0.75) and the URL must carry the filters the
     map knows the URL form of."""
+    clear_popups(cf, s, lambda m: None)  # a timed pop-up in the screenshot would spoil the verdict
     shot = lambda: base64.b64decode(s.browser.call("Page.captureScreenshot", format="jpeg", quality=80)["data"])
     ok, score = goal_reached(cf, goal, s.observe(), shot)
     return ok and url_agrees(s.page["url"], expected), score
@@ -226,7 +241,9 @@ def _choose_options(cf, s, rec, goal, state, log, ms):
 
 def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, log, ms):
     """Annotate each option with where it leads, per the index; Jev picks one; click it."""
-    options, menus = [], menu_options(index, els)
+    # a menu that didn't open earlier is offered as the plain control it is (Nike's "Men" is also a link)
+    menus = {n: m for n, m in menu_options(index, els, s.page.get("actions")).items() if ("menu", path, n) not in tried}
+    options = []
     for e in els:
         if "click" not in e["actions"] or blocked(e["label"]) or (path, e["node"]) in tried:
             continue
@@ -254,6 +271,9 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, 
     tried.add((path, e["node"]))
     if e["node"] in menus:
         item = open_menu(cf, s, rec, e, menus[e["node"]], goal, state, log, index)
+        if item is None:
+            tried.discard((path, e["node"]))
+            tried.add(("menu", path, e["node"]))
         if item is LEFT_SITE:
             log(f"GUARD: left {s.host}; stopped")
             return False

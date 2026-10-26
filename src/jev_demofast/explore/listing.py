@@ -21,7 +21,7 @@ READ_LISTING_JS = r"""(() => {
     const h = heading(e); if (!h) continue;
     if (!groups.has(h)) groups.set(h, []);
     if (e.tagName === 'SELECT') for (const o of e.options) groups.get(h).push({type: 'select', name: e.name || '', label: clean(o.text)});
-    else groups.get(h).push({type: e.type, name: e.name || '', label: label(e)});
+    else groups.get(h).push({type: e.type, name: e.name || '', label: label(e), value: e.value || ''});
   }
   const prefixes = {};
   for (const a of document.querySelectorAll('a[href]')) {
@@ -39,6 +39,7 @@ READ_LISTING_JS = r"""(() => {
 })()"""
 
 SORT = re.compile(r"\bsort", re.I)
+COUNT = re.compile(r"\s*\(\d+\)\s*$")  # "Running Shoes (12)": the count changes as filters apply
 LOW = re.compile(r"gte|min|from|low", re.I)
 HIGH = re.compile(r"lte|max|to\b|high", re.I)
 
@@ -78,12 +79,16 @@ def parse_listing(raw):
         if rng is not None or (len(controls) == 2 and all(c["type"] in ("number", "text") for c in controls)):
             filters.append({"group": g["heading"], "kind": "range", "param": rng, "values": []})
             continue
-        values = list(dict.fromkeys(c["label"] for c in controls if c["label"]))
+        values = list(dict.fromkeys(COUNT.sub("", c["label"]) for c in controls if c["label"]))
         if len(values) < 2:  # a filter offers a choice; one value is a product card's control (a colour swatch)
             continue
         kind = "radio" if all(c["type"] == "radio" for c in controls) else "checkbox"
-        filters.append({"group": g["heading"], "kind": kind, "param": _param(c["name"] for c in controls),
-                        "values": values})
+        entry = {"group": g["heading"], "kind": kind, "param": _param(c["name"] for c in controls), "values": values}
+        url_values = {COUNT.sub("", c["label"]): c["value"] for c in controls
+                      if c.get("value") and c["value"] not in ("on", COUNT.sub("", c["label"]))}
+        if entry["param"] and url_values:  # what the URL carries (Shopify's taxonomy filters put an id there)
+            entry["url_values"] = url_values
+        filters.append(entry)
     if raw.get("add_to_cart"):  # its size and colour pickers aren't listing filters (Nike's product pages)
         return {"kind": "product", "filters": [], "sort": None}
     listing = raw.get("item_links", 0) >= 8 and bool(filters or sort)

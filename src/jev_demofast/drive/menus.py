@@ -16,13 +16,15 @@ LEFT_SITE = object()  # open_menu's answer when a menu item led off the site: th
 LOOKS, EVERY_S = 4, 0.4  # menus fade in (Allbirds'): their items appear a moment after the page stops changing
 
 
-def menu_options(index, els):
-    """{opener node: menu} for the map's menus whose opener is on screen."""
+def menu_options(index, els, actions=None):
+    """{opener node: menu} for the map's menus whose opener is on screen. With the page's actions (which carry
+    positions), the opener highest on the page wins: the top bar's "Men", not a footer or hero link."""
+    y = {a["node"]: a.get("rect", {}).get("y", 0) for a in actions or [] if "node" in a}  # not scroll or wait
     found = {}
     for menu in (index.get("_site") or {}).get("menus", []):
-        e = next((e for e in els if "click" in e["actions"] and words(e["label"]) == words(menu["opener"])), None)
-        if e is not None:
-            found[e["node"]] = menu
+        matches = [e for e in els if "click" in e["actions"] and words(e["label"]) == words(menu["opener"])]
+        if matches:
+            found[min(matches, key=lambda e: y.get(e["node"], 0))["node"]] = menu
     return found
 
 

@@ -49,6 +49,8 @@ def _merge(entry, page, path, url):
     for f in page["filters"]:
         if f["group"] in groups:
             groups[f["group"]]["values"] = list(dict.fromkeys(groups[f["group"]]["values"] + f["values"]))
+            if f.get("url_values"):
+                groups[f["group"]]["url_values"] = {**groups[f["group"]].get("url_values", {}), **f["url_values"]}
         else:
             entry["filters"].append(f)
     if page["kind"] == "listing":

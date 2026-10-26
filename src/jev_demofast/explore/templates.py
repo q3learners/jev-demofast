@@ -16,7 +16,7 @@ def templates(paths):
     routes = {}
     for p, parts in segs.items():
         best, best_count = None, 1
-        for k in range(len(parts)):
+        for k in range(len(parts) if len(parts) >= 2 else 0):  # /men and /about aren't one template
             key = tuple(parts[:k] + ["*"] + parts[k + 1:])
             values = {q[k] for q in segs.values() if len(q) == len(parts)
                       and tuple(q[:k] + ["*"] + q[k + 1:]) == key}
