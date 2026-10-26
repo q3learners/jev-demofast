@@ -10,7 +10,7 @@ import json
 import time
 
 from ..record.recorder import Recorder
-from .guards import DryRunStop, blocked, fill_text, has_secret, on_site, would_change
+from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, would_change
 from .pick import Picker
 from .plan import extract, make_plan
 from .session import Session, StalePage, fingerprint
@@ -50,7 +50,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                 i += 1
                 continue
             kind = "fill" if step["do"] == "fill" else "click"
-            if kind == "fill" and has_secret(step.get("value")):
+            if kind == "fill" and password_secret(step.get("value")):  # other secrets: a picked field, below
                 if s.type_secret_into_password(fill_text(step["value"])):
                     time.sleep(0.2)
                     s.observe()
@@ -60,7 +60,10 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                     actions += 1
                     i += 1
                     continue
-            els = [e for e in s.elements() if kind in e["actions"] and (page["url"], e["node"]) not in failed
+                # Fail closed: a secret is never typed into a visible field a model picked.
+                log(f"{ms():>6} ms  STUCK: no password field for {step['target']!r}; a secret is never typed elsewhere")
+                break
+            els =[e for e in s.elements() if kind in e["actions"] and (page["url"], e["node"]) not in failed
                    and not blocked(e["label"], unless=step["target"])]
             chosen, conf, how = pick.pick(step["target"], kind, els, page, goal)
             if chosen is None:

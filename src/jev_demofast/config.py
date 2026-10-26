@@ -59,8 +59,9 @@ def _llm_provider(overrides):
     if not token:
         raise ConfigError(f"JDF_LLM_PROVIDER={name} needs {p['key']}")
     model = os.environ.get(f"JDF_{name.upper()}_MODEL") or p["model"]
+    # The Cloudflare defaults' extras (GLM's reasoning_effort) aren't sent elsewhere; JDF_PLAN_EXTRA etc. still are.
     chosen = {"llm_provider": name, "llm_url": p["url"], "llm_token": token, "llm_extra": p["extra"],
-              "plan_extra": {}, "script_extra": {}}
+              "plan_extra": overrides.get("plan_extra", {}), "script_extra": overrides.get("script_extra", {})}
     for role in ("plan_model", "read_model", "script_model"):
         chosen[role] = overrides.get(role, model)
     return chosen

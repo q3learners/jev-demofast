@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from ..browser.elements import describe, words
 from ..index import route_for, summary
 from ..record.recorder import Recorder
-from .guards import PLACEHOLDER, DryRunStop, blocked, fill_text, on_site, would_change
+from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, would_change
 from .session import Session, StalePage, fingerprint
 
 CONFIDENT = 0.5
@@ -97,8 +97,8 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
         log(f"{ms():>6} ms    fill {e['label'][:30]!r}")
         history.append(f"filled {e['label'][:40]} on {state['screen']['url']}")
     # Passwords are hidden from observation by design: type a {{NAME}} secret from the goal straight into the field.
-    secrets = PLACEHOLDER.findall(goal)
-    if secrets and s.type_secret_into_password(fill_text("{{" + secrets[0] + "}}")):
+    secret = password_secret(goal)
+    if secret and s.type_secret_into_password(fill_text("{{" + secret + "}}")):
         time.sleep(0.2)
         rec.snap(0.8)
         rec.commit({"do": "fill", "target": "password (typed directly; never shown)"}, s.observe())

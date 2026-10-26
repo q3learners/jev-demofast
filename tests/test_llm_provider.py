@@ -7,7 +7,8 @@ CF = {"CLOUDFLARE_ACCOUNT_ID": "acct", "CLOUDFLARE_API_TOKEN": "cf-token"}
 
 
 def env(monkeypatch, **values):
-    for k in ("JDF_LLM_PROVIDER", "NEBIUS_API_KEY", "JDF_NEBIUS_MODEL", "JDF_PLAN_MODEL"):
+    for k in ("JDF_LLM_PROVIDER", "NEBIUS_API_KEY", "JDF_NEBIUS_MODEL", "JDF_PLAN_MODEL", "JDF_PLAN_EXTRA",
+              "JDF_SCRIPT_EXTRA"):
         monkeypatch.delenv(k, raising=False)
     for k, v in {**CF, **values}.items():
         monkeypatch.setenv(k, v)
@@ -61,3 +62,20 @@ def test_chat_posts_to_the_configured_provider(monkeypatch):
     assert cf.chat(cf.s.plan_model, "system", "user") == "ok"
     assert sent == {"url": "https://api.tokenfactory.nebius.com/v1/chat/completions", "token": "nb-key",
                     "model": "nvidia/some-nemotron", "thinking": False}
+
+
+def test_nebius_keeps_extras_the_user_set(monkeypatch):
+    env(monkeypatch, JDF_LLM_PROVIDER="nebius", NEBIUS_API_KEY="nb-key", JDF_PLAN_EXTRA='{"temperature": 0.1}')
+    s = load()
+    assert s.plan_extra == {"temperature": 0.1} and s.script_extra == {}
+
+
+def test_a_non_json_error_page_is_a_model_error_not_a_crash(monkeypatch):
+    import httpx
+    from jev_demofast.cloudflare import ModelError
+    env(monkeypatch)
+    cf = Cloudflare(load())
+    cf._local.client = httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(502, text="<html>Bad gateway</html>", headers={"content-type": "text/html"})))
+    with pytest.raises(ModelError, match="HTTP 502"):
+        cf.chat(cf.s.plan_model, "system", "user")

@@ -5,7 +5,22 @@ from urllib.parse import urljoin, urlparse
 from ..browser.cdp import Browser, StalePage, fingerprint
 from ..browser.elements import observed
 
-__all__ = ["Session", "StalePage", "fingerprint"]
+__all__ = ["Session", "StalePage", "fingerprint", "origin", "site_cookies"]
+
+
+def origin(url):
+    """scheme://host[:port]: storage belongs to an origin, so the port matters (localhost:3000)."""
+    u = urlparse(url)
+    return f"{u.scheme}://{u.netloc.rsplit('@', 1)[-1]}"
+
+
+def site_cookies(cookies, host):
+    """This site's cookies: its own and its subdomains' (the site, as the on-site guard counts it), plus a parent
+    domain's that it receives (.example.com)."""
+    def sent(c):
+        d = c["domain"].lstrip(".")
+        return host == d or host.endswith("." + d) or d.endswith("." + host)
+    return [c for c in cookies if sent(c)]
 
 
 class Session:
@@ -14,12 +29,20 @@ class Session:
         self.host = urlparse(url).hostname
         self.browser = Browser(url)
         if fresh:  # start logged out: clear this site's cookies and storage (isolated profile only)
-            self.browser.call("Network.clearBrowserCookies")
-            self.browser.call("Storage.clearDataForOrigin", origin=f"{urlparse(url).scheme}://{self.host}",
-                              storageTypes="all")
+            self.clear_site(url)
             self.browser.call("Page.navigate", url=url)
             self.wait_loaded()
         self.page = self.observe()
+
+    def clear_site(self, url):
+        """Delete only the cookies this site can read, and its origin's storage; other sites stay logged in."""
+        try:
+            cookies = self.browser.call("Storage.getCookies")["cookies"]
+        except RuntimeError:  # older Chrome: the page-level equivalent
+            cookies = self.browser.call("Network.getAllCookies")["cookies"]
+        for c in site_cookies(cookies, self.host):
+            self.browser.call("Network.deleteCookies", name=c["name"], domain=c["domain"], path=c["path"])
+        self.browser.call("Storage.clearDataForOrigin", origin=origin(url), storageTypes="all")
 
     def wait_loaded(self, timeout=10):
         deadline = time.monotonic() + timeout

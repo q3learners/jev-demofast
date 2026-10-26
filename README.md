@@ -89,7 +89,9 @@ There are three ways to get past a login, safest first:
    (`~/.cache/jev-demofast/chrome-profile`) remembers the session, so later demos start logged in. Don't pass
    `--fresh`: it clears that site's cookies.
 2. **Let the tool type the credentials:** put `{{PASSWORD}}` in the prompt and set `DEMO_PASSWORD`. The value is
-   typed straight into the password field; no model or log ever sees it.
+   typed straight into the password field; no model or log ever sees it. Only a placeholder named like a password or
+   other secret (`{{PASSWORD}}`, `{{ADMIN_PIN}}`, `{{API_TOKEN}}`) goes there, and if there's no password field the
+   run stops rather than type it anywhere else. Others, such as `{{EMAIL}}`, are typed into the matching field.
 3. **Your own everyday Chrome (opt-in):** `--use-my-browser`.
    - You switch on remote debugging in `chrome://inspect/#remote-debugging`, and Chrome asks you to allow the
      connection.
