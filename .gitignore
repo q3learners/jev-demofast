@@ -7,4 +7,8 @@ runs/
 out/
 *.mp4
 !docs/*.mp4
+*.gif
+!docs/*.gif
+*.run/
 .pytest_cache/
+app-index.json

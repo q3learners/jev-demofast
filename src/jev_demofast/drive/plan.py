@@ -1,5 +1,6 @@
 """LLM calls the navigator makes: a route plan once, and reading information off a page."""
 from ..browser.elements import observed
+from ..cloudflare import ModelError
 
 PLAN = """You plan browser steps to accomplish a user's goal on a website, starting from the CURRENT page.
 Return JSON: {"steps": [{"do": "click"|"fill"|"read", "target": "<visible label, or for read: what to extract>",
@@ -29,7 +30,7 @@ def make_plan(cf, goal, page, done_steps=None):
         context["already_done"] = done_steps
     try:
         plan = cf.chat_json(cf.s.plan_model, PLAN, context, cf.s.plan_extra)
-    except (ValueError, KeyError):  # malformed JSON happens now and then: one retry
+    except (ValueError, KeyError, ModelError):  # malformed JSON, no JSON, or a transient error page: one retry
         plan = cf.chat_json(cf.s.plan_model, PLAN, context, cf.s.plan_extra)
     plan["steps"] = [s for s in plan.get("steps", []) if s.get("do") in ("click", "fill", "read") and s.get("target")]
     # An information goal is finished when its read steps complete; an invented finish phrase only misleads.

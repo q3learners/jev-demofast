@@ -63,6 +63,8 @@ class Cloudflare:
             self.stats["jev_seconds"] += time.perf_counter() - started
         result = data.get("result", data)
         result = result.get("result", result)  # Workers AI wraps the model output one level deeper
+        if not isinstance(result.get("answers"), dict):
+            raise ModelError(f"Jev reply has no answers: {str(result)[:200]}")
         for qid, q in questions.items():
             self.decisions.append({"at": time.time(), "ms": round((time.perf_counter() - started) * 1000),
                                    "type": q["type"], "question": q.get("instructions", ""),
@@ -75,6 +77,8 @@ class Cloudflare:
         if allow_none:
             criteria["none"] = "none of these"
         ans = self.jev(state, {"q": {"type": "choice", "instructions": instructions, "criteria": criteria}})["q"]
+        if ans.get("choice") not in criteria:  # callers look the key up among the options: never hand them another
+            raise ModelError(f"Jev answered {ans.get('choice')!r}, which is not one of the {len(criteria)} options")
         return (None if ans["choice"] == "none" else ans["choice"]), ans["confidence"]
 
     def yes(self, instructions, state, true="yes", false="no"):

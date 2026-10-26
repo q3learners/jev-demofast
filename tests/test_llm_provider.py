@@ -79,3 +79,34 @@ def test_a_non_json_error_page_is_a_model_error_not_a_crash(monkeypatch):
         lambda request: httpx.Response(502, text="<html>Bad gateway</html>", headers={"content-type": "text/html"})))
     with pytest.raises(ModelError, match="HTTP 502"):
         cf.chat(cf.s.plan_model, "system", "user")
+
+
+def test_a_jev_answer_outside_the_options_is_a_model_error(monkeypatch):
+    from jev_demofast.cloudflare import ModelError
+    env(monkeypatch)
+    cf = Cloudflare(load())
+    monkeypatch.setattr(cf, "_post", lambda url, body, token=None: {"result": {"answers": {
+        "q": {"choice": "7", "confidence": 0.9}}}})
+    with pytest.raises(ModelError, match="not one of the 2 options"):
+        cf.choose("Which?", {"1": "Save", "2": "Cancel"}, {})
+    monkeypatch.setattr(cf, "_post", lambda url, body, token=None: {"result": {"error": "overloaded"}})
+    with pytest.raises(ModelError, match="no answers"):
+        cf.choose("Which?", {"1": "Save"}, {})
+
+
+def test_a_failed_route_plan_is_retried_once():
+    from jev_demofast.cloudflare import ModelError
+    from jev_demofast.drive.plan import make_plan
+    replies = [ModelError("chat: HTTP 502"), {"steps": [{"do": "click", "target": "Trending"}], "done_text": ""}]
+
+    class FakeCf:
+        class s:
+            plan_model, plan_extra = "m", {}
+        def chat_json(self, model, system, context, extra=None):
+            reply = replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+    plan = make_plan(FakeCf(), "find trending repos", {"url": "https://github.com/", "actions": []})
+    assert plan["steps"] == [{"do": "click", "target": "Trending"}] and not replies
