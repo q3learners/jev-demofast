@@ -209,3 +209,24 @@ def test_a_collapsed_filter_panel_is_opened_first():
     expected = filters.apply_filters(Cf(UNDER_100), s, rec, "goal", MAP["/collections/:handle"], log=lambda m: None)
     assert s.events[:3] == ["Filter Collapse filter", "Product Type", "Running Shoes (12)"]
     assert expected == ["filter.p.type=Running Shoes"] and rec.commits[0]["target"] == "open the filters"
+
+
+def test_the_panel_is_reopened_when_a_filter_click_collapses_it():
+    """Live: ticking "Under $75" reloaded the listing with the filter panel collapsed again."""
+    class Recollapsing(Listing):
+        opened = False
+
+        def observe(self):
+            page = super().observe()
+            if not self.opened:
+                page["actions"] = [{"kind": "click", "node": 9, "id": "e9", "role": "button",
+                                    "label": "Filter Collapse filter"}] + [a for a in page["actions"] if a["role"] == "link"]
+            return page
+
+        def act(self, e, kind, text=None):
+            self.opened = e["label"].startswith("Filter") or (self.opened and e["role"] != "checkbox")
+            super().act(e, kind, text)
+    s = Recollapsing()
+    filters.apply_filters(Cf(UNDER_100), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None)
+    assert [x for x in s.events if not x.startswith(("Filter", "Product Type"))] == [
+        "Running Shoes (12)", "Under $75 (3)", "$76 - $100 (9)"]

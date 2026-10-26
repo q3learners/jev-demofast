@@ -7,6 +7,7 @@ import time
 
 from ..browser.elements import words
 from .guards import blocked, on_site, stop_if_dry_run
+from .popups import clear_popups
 from .session import StalePage, fingerprint
 
 LEFT_SITE = object()  # open_menu's answer when a menu item led off the site: the run stops, as for any click
@@ -63,6 +64,8 @@ def open_menu(cf, s, rec, opener, menu, goal, state, log):
     rec.snap(1.0, node=opener["node"])
     how = menu.get("opens_on", "click")
     items = _open(s, rec, opener, menu, how)
+    if not items and clear_popups(cf, s, log):  # a pop-up landed just as the menu opened (Allbirds): try once more
+        items = _open(s, rec, opener, menu, how)
     if not items and how == "hover" and opener["role"] == "button":  # recorded as hover, but it may only open on click
         how = "click"
         items = _open(s, rec, opener, menu, how)

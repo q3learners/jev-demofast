@@ -75,14 +75,14 @@ def apply_filters(cf, s, rec, goal, entry, log=print):
     ("<param>=<value>"), for filters whose URL form the map knows; None if a click led off the site."""
     choices = choose_filters(cf, goal, entry.get("filters", []), entry.get("sort"))
     by_group = {f["group"]: f for f in entry.get("filters", [])}
-    expected, panel_opened = [], False
+    expected = []
     for c in choices["checks"]:
         e = _find(s, c["value"], ("checkbox", "radio", "option", "switch"))
-        if e is None and not panel_opened and _find(s, c["group"], ("button", "link", "tab")) is None:
+        # Each filter click may reload the listing with the panel collapsed again (Allbirds): reopen it when needed.
+        if e is None and _find(s, c["group"], ("button", "link", "tab")) is None:
             panel = next((x for x in s.elements() if x["role"] in ("button", "link") and PANEL.search(x["label"])
                           and not blocked(x["label"])), None)
             if panel is not None:  # every filter is behind one collapsed panel: open it on camera first
-                panel_opened = True
                 if _click(s, rec, panel, {"do": "click", "target": "open the filters"}) is LEFT_SITE:
                     return None
                 e = _find(s, c["value"], ("checkbox", "radio", "option", "switch"))

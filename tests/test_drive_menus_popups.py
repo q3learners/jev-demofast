@@ -201,3 +201,24 @@ def test_a_menu_opener_that_goes_stale_doesnt_crash_the_run(monkeypatch, tmp_pat
     result = jev_drive.run(AnyOption(), "https://shop.test/", "find running shoes", MAP, out=str(tmp_path),
                            log=lambda m: None)
     assert result["verified"] is False  # no crash: the menu simply didn't open, and the run ended honestly
+
+
+def test_a_menu_hidden_by_a_late_popup_is_tried_again(monkeypatch, tmp_path):
+    """Live: Allbirds' pop-up arrived just as Men was hovered, so the menu showed nothing."""
+    class LatePopup(Shop):
+        def hover(self, e):
+            super().hover(e)
+            if not any(k == "key" for k, _ in self.events):
+                self.covered = True  # the pop-up lands now and hides the menu
+
+        def observe(self):
+            page = super().observe()
+            if self.covered:
+                page["actions"] = []
+            return page
+    shops = []
+    monkeypatch.setattr(jev_drive, "Session", lambda url, fresh=False: shops.append(LatePopup(url)) or shops[-1])
+    result = jev_drive.run(Cf(), "https://shop.test/", "find men's running shoes", MAP, out=str(tmp_path),
+                           log=lambda m: None)
+    assert result["verified"] is True
+    assert shops[0].events == [("hover", "Men"), ("key", "Escape"), ("hover", "Men"), ("click", "Running")]
