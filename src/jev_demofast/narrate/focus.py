@@ -74,8 +74,8 @@ def follow(cf, run_dir, narration_path, clips_dir, out_dir, log=print):
         pan = []
         for y, hold in steps:
             y = max(0, min(int(y), page.height - vh))
-            path = os.path.join(out_dir, "frames", f"{act['segment']}-{len(out) + len(seg) + len(pan):05d}.png")
-            page.crop((0, y, vw, y + vh)).save(path)
+            path = os.path.join(out_dir, "frames", f"{act['segment']}-{len(out) + len(seg) + len(pan):05d}.jpg")
+            page.crop((0, y, vw, y + vh)).save(path, quality=92)  # like the recorded frames
             pan.append({"path": path, "hold": hold, "segment": act["segment"], "pending": False})
         out += seg + pan
         log(f"  focus {act['segment']}: pan {int(sy)}→{int(end)}{' through the list' if long_list else ''}")
