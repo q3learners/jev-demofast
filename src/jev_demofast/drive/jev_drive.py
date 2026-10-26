@@ -31,6 +31,7 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     log = rec.tee(log)
     result = {"goal": goal, "verified": False, "dry_run": dry_run}
     tried, filled, decisions, history = set(), set(), 0, []
+    why = "it ran out of steps"  # what the narration says if the goal isn't reached
     try:
         rec.snap(1.5)
         rec.commit({"do": "open"}, s.page)
@@ -58,6 +59,7 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
                 result["verified"] = confirmed(cf, goal, page)
                 if not result["verified"]:
                     log(f"{ms():>6} ms  NOT CONFIRMED: the screen doesn't show the goal accomplished; stopping")
+                    why = "the screen didn't show the goal accomplished"
                 break
             if mode == "act_here" and fields and path not in filled:
                 if _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
@@ -66,7 +68,10 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
                 filled.add(path)
                 continue
             if not _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, log, ms):
+                why = "it found no way to the screen where the goal is done"
                 break
+        if not result["verified"]:
+            rec.unconfirmed(why)
     except DryRunStop as stop:
         result["would_click"] = str(stop)
         log(f"{ms():>6} ms  DRY RUN: stopped before {str(stop)!r}; nothing was changed")
