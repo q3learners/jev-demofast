@@ -9,6 +9,10 @@ import os
 import re
 import time
 
+# Frames as JPEG: Chrome captures it about 3x faster than PNG (70 vs 233 ms on GitHub), at the same size, and
+# at quality 92 the difference is invisible (mean 0.7/255), well under what the video encoder discards anyway.
+FRAME = {"format": "jpeg", "quality": 92}
+
 
 class Recorder:
     def __init__(self, out, session, page_maps=False, blur_typed=True):
@@ -38,7 +42,7 @@ class Recorder:
                   font:'600 13px/1.2 system-ui, sans-serif', padding:'5px 9px', borderRadius:'6px'}});
                   document.body.appendChild(b); }})()""")
             self.s.next_frame()  # the outline and badge are painted before the screenshot
-        data = self.s.browser.call("Page.captureScreenshot", format="png")["data"]
+        data = self.s.browser.call("Page.captureScreenshot", **FRAME)["data"]
         if node is not None:
             self.s.browser.evaluate(f"(() => {{ const e=window.__jevFast?.nodes.get({node}); "
                                     "if (e) { e.style.outline=''; e.style.outlineOffset=''; } "
@@ -73,7 +77,7 @@ class Recorder:
             return
         segment = f"{len(self.actions):02d}"
         for data, hold, t in self.pending:
-            path = os.path.join(self.out, "frames", f"f{len(self.frames):04d}.png")
+            path = os.path.join(self.out, "frames", f"f{len(self.frames):04d}.jpg")
             with open(path, "wb") as f:
                 f.write(base64.b64decode(data))
             self.frames.append({"path": path, "hold": hold, "segment": segment, "pending": False, "t": t})
@@ -105,10 +109,10 @@ class Recorder:
               return {scroll_y: Math.round(scrollY), vw: innerWidth, vh: innerHeight,
                       page_h: Math.min(document.documentElement.scrollHeight, 8000), blocks};
             })()""")
-            shot = self.s.browser.call("Page.captureScreenshot", format="png", captureBeyondViewport=True,
+            shot = self.s.browser.call("Page.captureScreenshot", **FRAME, captureBeyondViewport=True,
                                        clip={"x": 0, "y": 0, "width": info["vw"], "height": info["page_h"], "scale": 1})
             self.s.browser.evaluate(f"window.scrollTo(0, {info['scroll_y']})")
-            path = os.path.join(self.out, "frames", f"page-{segment}.png")
+            path = os.path.join(self.out, "frames", f"page-{segment}.jpg")
             with open(path, "wb") as f:
                 f.write(base64.b64decode(shot["data"]))
             return {"page_shot": path, **info}
