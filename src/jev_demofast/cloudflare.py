@@ -3,6 +3,7 @@
 Jev, embeddings and voice run on Cloudflare Workers AI. Chat (route plans, page reading, scripts) goes to the
 configured OpenAI-compatible provider: Cloudflare by default, or Nebius Token Factory (JDF_LLM_PROVIDER=nebius).
 """
+import base64
 import json
 import math
 import re
@@ -16,6 +17,11 @@ from .config import Settings
 
 class ModelError(RuntimeError):
     pass
+
+
+def sees_images(model):
+    """Clef reads up to 4 images with its state; Jev reads text only."""
+    return model.startswith("@cf/cloudflare/clef")
 
 
 class Cloudflare:
@@ -51,12 +57,22 @@ class Cloudflare:
         return data
 
     # --- Jev: typed decisions -------------------------------------------------------------------------------
-    def jev(self, state, questions):
-        """Ask Jev typed questions about a state. Returns {question id: answer}."""
+    def _decision_request(self, model, state, questions, images):
+        """Jev (via AI Gateway) takes {model, input}; Workers AI decision models such as Clef take the questions on
+        their own route, with screenshots as data URIs."""
+        if not model.startswith("@cf/"):
+            return f"{self.s.base}/run", {"model": model, "input": {"state": state, "questions": questions}}
+        body = {"model": model.rsplit("/", 1)[-1], "state": state, "questions": questions}
+        if images and sees_images(model):
+            body["images"] = ["data:image/jpeg;base64," + base64.b64encode(i).decode() for i in images]
+        return f"{self.s.base}/run/{model}", body
+
+    def jev(self, state, questions, model=None, images=None):
+        """Ask the decision model (Jev unless `model` says otherwise) typed questions about a state. Returns
+        {question id: answer}. `images` (JPEG bytes) are sent only to a model that reads them."""
         started = time.perf_counter()
         try:
-            data = self._post(f"{self.s.base}/run", {"model": self.s.jev_model,
-                                                    "input": {"state": state, "questions": questions}},
+            data = self._post(*self._decision_request(model or self.s.jev_model, state, questions, images),
                               token=self.s.jev_token)
         finally:
             self.stats["jev_calls"] += 1
@@ -81,10 +97,10 @@ class Cloudflare:
             raise ModelError(f"Jev answered {ans.get('choice')!r}, which is not one of the {len(criteria)} options")
         return (None if ans["choice"] == "none" else ans["choice"]), ans["confidence"]
 
-    def yes(self, instructions, state, true="yes", false="no"):
-        """Jev's probability that the answer is yes."""
+    def yes(self, instructions, state, true="yes", false="no", model=None, images=None):
+        """The decision model's probability that the answer is yes."""
         ans = self.jev(state, {"q": {"type": "noul", "instructions": instructions,
-                                     "criteria": {"true": true, "false": false}}})["q"]
+                                     "criteria": {"true": true, "false": false}}}, model=model, images=images)["q"]
         return ans["noul"]
 
     # --- chat ---------------------------------------------------------------------------------------------

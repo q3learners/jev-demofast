@@ -6,10 +6,12 @@ Works on any site without an app index. Checks around every click:
   guards     same site only; no sign-up / third-party login / log-out / delete; secrets typed, never shown
   verify     the plan's finish text (if any) must appear; information steps read the whole page
 """
+import base64
 import json
 import time
 
 from ..record.recorder import Recorder
+from .check import shows_answer
 from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, would_change
 from .pick import Picker
 from .plan import extract, make_plan
@@ -160,7 +162,11 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
             done.append(f"{kind} {step['target']!r}")
             i = nxt
         if i >= len(steps) and not done_text and steps and steps[-1]["do"] == "read":
-            result["verified"] = bool(result["items"])  # an information goal is done when its reads return data
+            # an information goal is done when the screen shows what it asked for, not merely when a read returned text
+            shot = lambda: base64.b64decode(s.browser.call("Page.captureScreenshot", format="jpeg", quality=80)["data"])
+            result["verified"], score = shows_answer(cf, goal, steps[-1]["target"], result["items"], s.page, shot)
+            log(f"{ms():>6} ms  {'VERIFIED' if result['verified'] else 'NOT SHOWN'}: the screen shows "
+                f"{steps[-1]['target'][:50]!r}? {score:.2f}")
         if i >= len(steps) and done_text and not result["verified"]:
             s.settle(s.page.get("text") or "", max_s=6)
             result["verified"] = done_text in (s.page.get("text") or "").lower()

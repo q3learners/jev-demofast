@@ -14,6 +14,9 @@ class Settings:
     jev_token: str
     # Models (all Cloudflare Workers AI). Override with env vars of the same name, upper-cased with JDF_ prefix.
     jev_model: str = "typesafe/jev"
+    # Checks that a read step's answer is really on screen. Empty means jev_model. A Clef model
+    # (@cf/cloudflare/clef) also gets a screenshot: in tests it caught a wrong "done" that page text alone missed.
+    check_model: str = ""
     # Route plans: GLM-5.3-flash (reasoning low) gave the same sensible plan 3/3; Llama 3.3 varied run to run.
     plan_model: str = "@cf/zai-org/glm-5.3-flash"
     plan_extra: dict = field(default_factory=lambda: {"reasoning_effort": "low"})
@@ -75,7 +78,7 @@ def load(require_cloudflare=True) -> Settings:
         raise ConfigError("Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (Workers AI). "
                           "Jev also needs AI Gateway credits on that account.")
     overrides = {}
-    for name in ("jev_model", "plan_model", "read_model", "script_model", "embed_model", "tts_model"):
+    for name in ("jev_model", "check_model", "plan_model", "read_model", "script_model", "embed_model", "tts_model"):
         value = os.environ.get(f"JDF_{name.upper()}")
         if value:
             overrides[name] = value
@@ -86,6 +89,8 @@ def load(require_cloudflare=True) -> Settings:
     overrides.update(_llm_provider(overrides))
     settings = Settings(account_id=account, api_token=token, jev_token=os.environ.get("JEV_TOKEN") or token,
                         cdp_url=os.environ.get("BU_CDP_URL", "http://127.0.0.1:9333"), **overrides)
+    if not settings.check_model:
+        settings = replace(settings, check_model=settings.jev_model)
     if not settings.llm_url:  # Cloudflare Workers AI's OpenAI-compatible endpoint
         settings = replace(settings, llm_url=f"{settings.base}/v1/chat/completions", llm_token=token)
     return settings
