@@ -76,6 +76,10 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
             if mode == "act_here" and filterable:
                 expected = apply_filters(cf, s, rec, goal, entry, log)
                 filled.add(path)
+                if expected is None:
+                    log(f"GUARD: left {s.host}; stopped")
+                    why = f"a click led away from {s.host}"
+                    break
                 ok, score = _explored_verdict(cf, goal, s, expected)
                 log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: filtered listing shows the goal? {score:.2f}"
                     f"{'' if url_agrees(s.page['url'], expected) else ' (the URL lacks the filters)'}")

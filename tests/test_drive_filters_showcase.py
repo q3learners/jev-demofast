@@ -150,3 +150,40 @@ def test_a_map_without_site_or_filters_still_drives(monkeypatch, tmp_path):
     source_map = {"/collections/:handle": {"links": [], "fields": ["Email"], "texts": []}}
     assert run(monkeypatch, tmp_path, Cf(UNDER_100), listing=WithField, index=source_map)["verified"] is True
     assert called == ["form"]
+
+
+def test_blocked_labels_are_never_clicked_as_filters():
+    picks = {"checks": [{"group": "Account", "value": "Delete account"}], "ranges": [], "sort": None}
+    entry = {"filters": [{"group": "Account", "kind": "checkbox", "param": None, "values": ["Delete account", "Keep"]}]}
+
+    class WithDanger(Listing):
+        def observe(self):
+            page = super().observe()
+            page["actions"].append({"kind": "click", "node": 40, "id": "e40", "role": "checkbox", "label": "Delete account"})
+            return page
+    s = WithDanger()
+    assert filters.apply_filters(Cf(picks), s, Rec(), "goal", entry, log=lambda m: None) == [] and s.events == []
+
+
+def test_a_filter_click_that_leaves_the_site_stops():
+    class Leaves(Listing):
+        def act(self, e, kind, text=None):
+            super().act(e, kind, text)
+            self.gone = True
+
+        def observe(self):
+            page = super().observe()
+            if getattr(self, "gone", False):
+                page["url"] = "https://elsewhere.test/"
+            return page
+    s = Leaves()
+    assert filters.apply_filters(Cf(UNDER_100), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None) is None
+    assert len(s.events) == 1
+
+
+def test_price_boxes_only_take_numbers():
+    entry = {"filters": [{"group": "Price", "kind": "range", "param": ["p.gte", "p.lte"], "values": []}]}
+    picks = {"checks": [], "ranges": [{"group": "Price", "min": None, "max": "100; drop table"}], "sort": None}
+    assert filters.choose_filters(Cf(picks), "goal", entry["filters"])["ranges"] == []
+    picks["ranges"][0]["max"] = "$100"
+    assert filters.choose_filters(Cf(picks), "goal", entry["filters"])["ranges"] == [{"group": "Price", "min": None, "max": "100"}]
