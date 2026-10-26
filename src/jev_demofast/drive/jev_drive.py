@@ -91,7 +91,7 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
         rec.snap(1.0, node=e["node"])
         s.act(e, "fill", text=fill_text(v))
         rec.blur(e["node"])
-        time.sleep(0.3)
+        s.next_frame()
         rec.snap(0.8)
         rec.commit({"do": "fill", "target": e["label"]}, s.observe())
         log(f"{ms():>6} ms    fill {e['label'][:30]!r}")
@@ -99,7 +99,7 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
     # Passwords are hidden from observation by design: type a {{NAME}} secret from the goal straight into the field.
     secret = password_secret(goal)
     if secret and s.type_secret_into_password(fill_text("{{" + secret + "}}")):
-        time.sleep(0.2)
+        s.next_frame()
         rec.snap(0.8)
         rec.commit({"do": "fill", "target": "password (typed directly; never shown)"}, s.observe())
         log(f"{ms():>6} ms    fill password (typed directly; value never shown)")
@@ -168,7 +168,7 @@ def _choose_options(cf, s, rec, goal, state, log, ms):
     _stop_if_dry_run(rec, e, s)
     rec.snap(1.0, node=e["node"])
     s.act(e, "click")
-    time.sleep(0.2)
+    s.next_frame()
     rec.snap(0.8)
     rec.commit({"do": "click", "target": e["label"]}, s.observe())
     log(f"{ms():>6} ms    select {e['label'][:30]!r} ({conf:.2f})")
@@ -208,7 +208,7 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, 
         rec.discard()
         s.observe()
         return True
-    time.sleep(0.6)
+    s.wait_for_page()
     page = s.observe()
     rec.snap(0.8)
     if not on_site(page["url"], s.host):

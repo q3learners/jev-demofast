@@ -44,7 +44,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                                        "let n; while ((n=w.nextNode())) if (n.textContent.includes(t)) "
                                        "{ n.parentElement.scrollIntoView({block:'start'}); window.scrollBy(0,-80); return; } })"
                                        f"({json.dumps(items[0][:40])})")
-                    time.sleep(0.3)
+                    s.next_frame()
                 s.observe()
                 rec.snap(3.0)
                 rec.commit({"do": "read", "target": step["target"], "items": items}, s.page)
@@ -54,7 +54,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
             kind = "fill" if step["do"] == "fill" else "click"
             if kind == "fill" and password_secret(step.get("value")):  # other secrets: a picked field, below
                 if s.type_secret_into_password(fill_text(step["value"])):
-                    time.sleep(0.2)
+                    s.next_frame()
                     s.observe()
                     rec.snap(1.2)
                     rec.commit({"do": "fill", "target": step["target"], "chose": "password field"}, s.page)
@@ -80,7 +80,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                         rec.discard()
                         s.observe()
                         continue
-                    time.sleep(0.5)
+                    s.wait_for_page()
                     s.observe()
                     rec.snap(0.8)
                     rec.commit({"do": "click", "target": f"open the menu holding {step['target']}",
@@ -113,7 +113,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                 continue
             if kind == "fill":
                 rec.blur(chosen["node"])
-            time.sleep(0.4)
+            s.wait_for_page()
             page = s.observe()
             changed = fingerprint(page) != before
             rec.snap(1.0)

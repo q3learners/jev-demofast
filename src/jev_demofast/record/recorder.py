@@ -37,7 +37,7 @@ class Recorder:
                   left: (r.right+12)+'px', top: (r.top+r.height/2-13)+'px', background:'#f59e0b', color:'#111',
                   font:'600 13px/1.2 system-ui, sans-serif', padding:'5px 9px', borderRadius:'6px'}});
                   document.body.appendChild(b); }})()""")
-            time.sleep(0.12)
+            self.s.next_frame()  # the outline and badge are painted before the screenshot
         data = self.s.browser.call("Page.captureScreenshot", format="png")["data"]
         if node is not None:
             self.s.browser.evaluate(f"(() => {{ const e=window.__jevFast?.nodes.get({node}); "
