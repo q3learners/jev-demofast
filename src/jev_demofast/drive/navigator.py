@@ -11,7 +11,7 @@ import json
 import time
 
 from ..record.recorder import Recorder
-from .check import shows_answer
+from .check import goal_reached, shows_answer
 from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, would_change
 from .pick import Picker
 from .plan import extract, make_plan
@@ -161,20 +161,28 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
             rec.commit({"do": kind, "target": step["target"], "chose": chosen["label"][:80]}, page)
             done.append(f"{kind} {step['target']!r}")
             i = nxt
-        if i >= len(steps) and not done_text and steps and steps[-1]["do"] == "read":
+        reads_last = bool(steps) and steps[-1]["do"] == "read"
+        shot = lambda: base64.b64decode(s.browser.call("Page.captureScreenshot", format="jpeg", quality=80)["data"])
+        if i >= len(steps) and not done_text and reads_last:
             # an information goal is done when the screen shows what it asked for, not merely when a read returned text
-            shot = lambda: base64.b64decode(s.browser.call("Page.captureScreenshot", format="jpeg", quality=80)["data"])
             result["verified"], score = shows_answer(cf, goal, steps[-1]["target"], result["items"], s.page, shot)
             log(f"{ms():>6} ms  {'VERIFIED' if result['verified'] else 'NOT SHOWN'}: the screen shows "
                 f"{steps[-1]['target'][:50]!r}? {score:.2f}")
-        if i >= len(steps) and done_text and not result["verified"]:
-            s.settle(s.page.get("text") or "", max_s=6)
-            result["verified"] = done_text in (s.page.get("text") or "").lower()
-            log(f"{ms():>6} ms  {'VERIFIED' if result['verified'] else 'UNVERIFIED'}: finish text {done_text!r}")
+        if i >= len(steps) and not reads_last and not result["verified"]:
+            # The plan's finish phrase is a guess at the final page's wording: it verifies if it's there; otherwise the
+            # decision model judges the screen (GitHub's weekly Trending page says "most excited about this week", not
+            # the planned "trending repositories this week"). The last click already waited for the page.
+            page = s.observe()
+            if done_text and done_text in (page.get("text") or "").lower():
+                result["verified"] = True
+                log(f"{ms():>6} ms  VERIFIED: page shows {done_text!r}")
+            else:
+                result["verified"], score = goal_reached(cf, goal, page, shot)
+                log(f"{ms():>6} ms  {'VERIFIED' if result['verified'] else 'NOT REACHED'}: the screen shows the goal "
+                    f"accomplished? {score:.2f}")
         if i >= len(steps):
-            why = (f"the page never showed {done_text!r}" if done_text else
-                   "the page didn't show the information asked for" if steps and steps[-1]["do"] == "read" else
-                   "nothing on the page confirmed the goal")
+            why = ("the page didn't show the information asked for" if reads_last else
+                   "the screen didn't show the goal accomplished")
         if not result["verified"]:
             rec.unconfirmed(why)
     except DryRunStop as stop:

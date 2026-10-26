@@ -1,5 +1,8 @@
-"""Is the goal's answer really on screen? A read step returning text isn't proof: one run typed "trending this week"
-into a search box, read the same words back, and would have counted that as the answer."""
+"""Did the run really get there? Two judgments by the decision model, instead of trusting text matches:
+- a read step returning text isn't proof: one run typed "trending this week" into a search box, read the same words
+  back, and would have counted that as the answer;
+- a planner's guessed finish phrase isn't either: GitHub's weekly Trending page doesn't say "trending repositories".
+"""
 from ..cloudflare import sees_images
 
 CONFIDENT = 0.5
@@ -20,5 +23,21 @@ def shows_answer(cf, goal, asked, items, page, screenshot=None):
     images = [screenshot()] if screenshot and sees_images(cf.s.check_model) else None
     score = cf.yes(QUESTION.format(asked=asked), state, true="the screen shows it",
                    false="it doesn't: the wrong page, a search box or menu, an error, or only typed text",
+                   model=cf.s.check_model, images=images)
+    return score >= CONFIDENT, score
+
+
+GOAL_QUESTION = ("Does this screen show the goal accomplished: the page or result the goal asks for, in the state it asks "
+                 "for (for example the right filter, tab or time range)? Not a search box, a menu, an error, or a "
+                 "different page.")
+
+
+def goal_reached(cf, goal, page, screenshot=None):
+    """(verified, score) for the screen a run ended on."""
+    state = {"goal": goal, "url": page["url"], "title": page.get("title", ""),
+             "visible_text": " ".join((page.get("text") or "").split())[:1500]}
+    images = [screenshot()] if screenshot and sees_images(cf.s.check_model) else None
+    score = cf.yes(GOAL_QUESTION, state, true="yes: this is where the goal leads, as asked",
+                   false="no: the wrong page or state, a search box or menu, or an error",
                    model=cf.s.check_model, images=images)
     return score >= CONFIDENT, score
