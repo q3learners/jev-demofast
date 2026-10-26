@@ -90,6 +90,8 @@ class Picker:
         ahead = [j for j in range(i + 1, min(i + 4, len(steps))) if steps[j]["do"] != "read"]
         if not ahead or ahead[0] != i + 1:
             return i + 1
+        if not specific(steps[i + 1]["target"]):  # a target of just "1" can't confirm the click: let it stand
+            return i + 1
         for attempt in range(polls):
             els = session.elements()
             # 1. exact evidence first, for every upcoming step: a later step fully matching means skip ahead

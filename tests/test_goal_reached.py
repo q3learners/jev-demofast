@@ -55,6 +55,7 @@ class ClickSession:
 
 @pytest.mark.parametrize("score,verified", [(0.86, True), (0.12, False)])
 def test_the_final_screen_decides_when_the_finish_phrase_is_missing(monkeypatch, tmp_path, score, verified):
+    monkeypatch.setattr(navigator, "FINAL_REPLANS", 0)  # the check alone; re-planning has its own tests
     monkeypatch.setattr(navigator, "Session", ClickSession)
     monkeypatch.setattr(navigator, "make_plan", lambda cf, goal, page, done=None: {
         "steps": [{"do": "click", "target": "Trending"}], "done_text": "trending repositories this week"})
@@ -81,3 +82,9 @@ def test_the_finish_phrase_on_the_page_still_verifies_without_a_model_call(monke
     result = navigator.run(cf, "https://github.com/", "find trending projects this week", out=str(tmp_path),
                            picker="keyword", log=lambda m: None)
     assert result["verified"] is True and cf.asked == []
+
+
+def test_the_wrong_time_range_doesnt_pass():
+    """Trending set to 'Today' for a 'this week' goal scored 0.54 with Jev once; the right page scores 0.96+."""
+    assert check.goal_reached(FakeCf(0.54), "find trending projects this week", TRENDING)[0] is False
+    assert check.goal_reached(FakeCf(0.96), "find trending projects this week", TRENDING)[0] is True

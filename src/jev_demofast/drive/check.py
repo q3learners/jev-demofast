@@ -27,6 +27,10 @@ def shows_answer(cf, goal, asked, items, page, screenshot=None):
     return score >= CONFIDENT, score
 
 
+# Stricter than CONFIDENT: with Jev, GitHub's Trending page in the wrong time range ('Today' for "this week") scored
+# 0.30-0.54, and passed once at 0.54; the right page scored 0.96-0.97 and the wrong page 0.03-0.04. A miss here costs a
+# re-plan, a wrong pass a false success.
+GOAL_CONFIDENT = 0.75
 GOAL_QUESTION = ("Does this screen show the goal accomplished: the page or result the goal asks for, in the state it asks "
                  "for (for example the right filter, tab or time range)? Not a search box, a menu, an error, or a "
                  "different page.")
@@ -40,4 +44,4 @@ def goal_reached(cf, goal, page, screenshot=None):
     score = cf.yes(GOAL_QUESTION, state, true="yes: this is where the goal leads, as asked",
                    false="no: the wrong page or state, a search box or menu, or an error",
                    model=cf.s.check_model, images=images)
-    return score >= CONFIDENT, score
+    return score >= GOAL_CONFIDENT, score
