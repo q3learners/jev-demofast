@@ -12,6 +12,8 @@ from ..browser.elements import describe, words
 from ..index import route_for, summary
 from ..record.recorder import Recorder
 from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, would_change
+from .menus import describe_menu, menu_options, open_menu
+from .popups import clear_popups
 from .session import Session, StalePage, fingerprint
 
 CONFIDENT = 0.5
@@ -37,6 +39,7 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
         rec.commit({"do": "open"}, s.page)
         while decisions < max_steps:
             decisions += 1
+            clear_popups(cf, s, log)  # marketing pop-ups open on timers, on any screen
             page = s.page
             path = urlparse(page["url"]).path
             route = route_for(path, index)
@@ -181,9 +184,12 @@ def _choose_options(cf, s, rec, goal, state, log, ms):
 
 def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, log, ms):
     """Annotate each option with where it leads, per the index; Jev picks one; click it."""
-    options = []
+    options, menus = [], menu_options(index, els)
     for e in els:
         if "click" not in e["actions"] or blocked(e["label"]) or (path, e["node"]) in tried:
+            continue
+        if e["node"] in menus:  # the map knows what this opener holds: offer the menu, opened on camera
+            options.append((e, describe_menu(menus[e["node"]])))
             continue
         href = s.href(e["node"])
         if href and not on_site(href, s.host):
@@ -204,6 +210,11 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, 
                           {str(e["node"]): f"{e['label'][:50]} {w}"[:300] for e, w in options}, state)
     e, where = next(o for o in options if str(o[0]["node"]) == key)
     tried.add((path, e["node"]))
+    if e["node"] in menus:
+        item = open_menu(cf, s, rec, e, menus[e["node"]], goal, state, log)
+        if item:
+            history.append(f"opened the {e['label'][:30]} menu and clicked '{item[:40]}' on {path}")
+        return True
     _stop_if_dry_run(rec, e, s)
     rec.snap(1.2, node=e["node"])
     before = fingerprint(s.observe())
