@@ -84,3 +84,25 @@ A silent GitHub demo measured at 32 s:
 - rendering: 3.8 s
 
 Jev is not the bottleneck. The fixed waits are the next thing to trim.
+
+## Exploring a live site (`explore/`)
+
+Without source code, the route planner guesses labels it can't see (GitHub's "Trending" sits inside a closed menu).
+`jev-demofast explore <url>` builds the map instead, once, ahead of time, in the same shape as the source-code map.
+Rules from the October 2026 runs on Allbirds, Everlane, Gymshark, Nike and Zara:
+
+- **Bot checks stop it.** Zara, H&M, ASOS and Uniqlo answered "Access Denied" to the test browser; the explorer stops
+  with a message and never tries to get around it.
+- **Pop-ups are cleared before reading anything,** and again after a short settle: Allbirds' newsletter pop-up opens a
+  few seconds in and hid the navigation, so the first run found no menus. Escape first (it closed Everlane's, which sits
+  in a third-party frame); otherwise a close control Jev picks, never one that signs up or changes data.
+- **Menus are found by hovering the top bar, or clicking a menu button,** never a link. Menus fade in (Allbirds' links
+  stayed invisible for a moment), so it looks a few times; a menu that didn't close isn't credited to the next opener.
+- **One or two pages per template.** `/collections/mens` and `/collections/womens` are one screen type.
+- **Filters are read from the page, closed panels included,** and Shopify's input names give each filter's URL form
+  (`filter.v.price.lte`). A product card's colour swatches (one value each) aren't filters, and a page with an
+  "add to bag" button is a product page, not a listing (Nike's size pickers looked like filters).
+
+In a demo from an explored map, each menu item says where it leads (Jev picked a single product from a bare-label menu
+until it did), the filter panel is reopened when a filter click collapses it, a value Shopify disables only while the
+listing reloads isn't mistaken for "no results", and the run is verified by the screenshot check plus the URL.
