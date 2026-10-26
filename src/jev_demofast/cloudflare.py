@@ -36,13 +36,18 @@ class Cloudflare:
         try:
             r = self.http.post(url, json=body, headers=headers)
         except httpx.TransportError:  # one retry on a fresh connection for transient network errors
+            self.http.close()
             self._local.client = httpx.Client(http2=True, timeout=180)
             r = self.http.post(url, json=body, headers=headers)
-        if r.headers.get("content-type", "").startswith("audio/"):
+        where = url.rsplit('/', 2)[-2:]
+        if r.headers.get("content-type", "").startswith("audio/") and not r.is_error:
             return r.content
-        data = r.json()
+        try:
+            data = r.json()
+        except ValueError:  # an edge error page or a plain-text rate limit: report it, don't crash on it
+            raise ModelError(f"{where}: HTTP {r.status_code}: {r.text[:200]!r}") from None
         if r.is_error or data.get("success") is False:  # Cloudflare says "errors"; OpenAI-style APIs "error"/"detail"
-            raise ModelError(f"{url.rsplit('/', 2)[-2:]}: {data.get('errors') or data.get('error') or data.get('detail') or r.status_code}")
+            raise ModelError(f"{where}: {data.get('errors') or data.get('error') or data.get('detail') or r.status_code}")
         return data
 
     # --- Jev: typed decisions -------------------------------------------------------------------------------
