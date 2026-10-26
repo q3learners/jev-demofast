@@ -284,3 +284,40 @@ def test_the_showcase_closes_an_open_filter_panel_first():
     finally:
         type(s).browser = Listing.browser
     assert keys == ["Escape"]
+
+
+def test_a_value_disabled_only_while_the_listing_reloads_is_still_applied(monkeypatch):
+    """Live: right after a filter click Shopify disables every option until the listing reloads; Running Shoes was
+    reported unavailable though it existed."""
+    monkeypatch.setattr(filters.time, "sleep", lambda s: None)
+    looks = {"n": 0}
+
+    class Reloading(Listing):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.panel = True
+
+        @property
+        def browser(self):
+            inner = super().browser
+
+            class B:
+                def evaluate(self, js, **k):
+                    return ["Running Shoes"] if "disabled" in js and looks["n"] < 2 else (
+                        [] if "disabled" in js else inner.evaluate(js))
+
+                def call(self, method, **params):
+                    return inner.call(method, **params)
+            return B()
+
+        def observe(self):
+            looks["n"] += 1
+            page = super().observe()
+            if looks["n"] < 3:  # still reloading: the box isn't offered yet
+                page["actions"] = [a for a in page["actions"] if not a["label"].startswith("Running")]
+            return page
+    picks = {"checks": [{"group": "Product Type", "value": "Running Shoes"}], "ranges": [], "sort": None}
+    s, unavailable = Reloading(), []
+    filters.apply_filters(Cf(picks), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None,
+                          unavailable=unavailable)
+    assert unavailable == [] and "Running Shoes (12)" in s.events

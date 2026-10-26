@@ -2,6 +2,7 @@
 tick the values the goal calls for, fill a price box. The map says which groups and values exist, so the language
 model only chooses among them; anything it invents is dropped."""
 import re
+import time
 from urllib.parse import parse_qsl, urlparse
 
 from ..browser.elements import words
@@ -79,6 +80,18 @@ def _disabled(s, value):
     return any(want and want <= words(label) for label in s.browser.evaluate(DISABLED_JS) or [])
 
 
+def _settled_find(s, value, looks=3, every_s=0.4):
+    """(control, disabled). Right after a filter click Shopify disables every option until the listing reloads, so a
+    value counts as disabled only if it stays disabled over a few looks."""
+    for n in range(looks):
+        e = _find(s, value, ("checkbox", "radio", "option", "switch"))
+        if e is not None or not _disabled(s, value):
+            return e, False
+        if n < looks - 1:
+            time.sleep(every_s)
+    return None, True
+
+
 def apply_filters(cf, s, rec, goal, entry, log=print, unavailable=None):
     """Apply the filters the goal calls for, on camera. Returns the URL parameters expected afterwards
     ("<param>=<value>"), for filters whose URL form the map knows; None if a click led off the site. Values the site
@@ -87,8 +100,8 @@ def apply_filters(cf, s, rec, goal, entry, log=print, unavailable=None):
     by_group = {f["group"]: f for f in entry.get("filters", [])}
     expected = []
     for c in choices["checks"]:
-        e = _find(s, c["value"], ("checkbox", "radio", "option", "switch"))
-        if e is None and _disabled(s, c["value"]):  # known from the page: no panel or heading clicked looking for it
+        e, disabled = _settled_find(s, c["value"])
+        if disabled:  # known from the page: no panel or heading clicked looking for it
             log(f"  filter {c['group']}: {c['value']!r} is unavailable (the site has no results for it here)")
             if unavailable is not None:
                 unavailable.append(f"{c['group']}: {c['value']}")

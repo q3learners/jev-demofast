@@ -33,7 +33,9 @@ READ_LISTING_JS = r"""(() => {
     (prefixes[key] ||= new Set()).add(u.pathname);
   }
   const item_links = Math.max(0, ...Object.values(prefixes).map(s => s.size));
-  return {item_links, groups: [...groups].map(([heading, controls]) => ({heading, controls}))};
+  const add_to_cart = [...document.querySelectorAll('button,input[type=submit]')].some(b =>
+    /add to (bag|cart|basket)/i.test(b.innerText || b.value || '') && b.checkVisibility());
+  return {item_links, add_to_cart, groups: [...groups].map(([heading, controls]) => ({heading, controls}))};
 })()"""
 
 SORT = re.compile(r"\bsort", re.I)
@@ -82,6 +84,8 @@ def parse_listing(raw):
         kind = "radio" if all(c["type"] == "radio" for c in controls) else "checkbox"
         filters.append({"group": g["heading"], "kind": kind, "param": _param(c["name"] for c in controls),
                         "values": values})
+    if raw.get("add_to_cart"):  # its size and colour pickers aren't listing filters (Nike's product pages)
+        return {"kind": "product", "filters": [], "sort": None}
     listing = raw.get("item_links", 0) >= 8 and bool(filters or sort)
     return {"kind": "listing" if listing else "page", "filters": filters, "sort": sort}
 

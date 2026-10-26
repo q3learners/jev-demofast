@@ -49,3 +49,10 @@ def test_product_card_swatches_are_not_filters():
     listing = parse_listing({**SHOPIFY, "groups": SHOPIFY["groups"] + swatches})
     assert not any(f["group"].startswith("swatch-group") for f in listing["filters"])
     assert len(listing["filters"]) == 3
+
+
+def test_a_product_page_is_not_a_listing():
+    """Live, Nike: a product page's size and colour pickers looked like filters. A page with an add-to-bag button is a
+    product page."""
+    raw = {**SHOPIFY, "add_to_cart": True}
+    assert parse_listing(raw)["kind"] == "product"
