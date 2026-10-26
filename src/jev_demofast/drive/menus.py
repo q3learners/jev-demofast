@@ -4,6 +4,7 @@ A founder showing their product opens the menu so the viewer learns where things
 to a page to skip that. The map's menus (_site.menus) tell Jev what each opener holds before it is opened.
 """
 import time
+from urllib.parse import urlparse
 
 from ..browser.elements import words
 from .guards import blocked, on_site, stop_if_dry_run
@@ -28,11 +29,20 @@ def describe_menu(menu, limit=8):
     return "→ opens a menu: " + ", ".join(i["label"][:24] for i in menu["items"][:limit])
 
 
+def _is_item(s, e, menu):
+    """The element is one of the menu's items: same label, and, when it's a link, the same destination (the top bar's
+    "New Arrivals" is not the Men menu's "New Arrivals")."""
+    matches = [i for i in menu["items"] if words(i["label"]) == words(e["label"])]
+    if not matches:
+        return False
+    href = s.href(e["node"])
+    return not href or urlparse(href).path.rstrip("/") in {i["to"].rstrip("/") for i in matches}
+
+
 def _items_on_screen(s, menu):
-    wanted = [words(i["label"]) for i in menu["items"]]
     for n in range(LOOKS):
         s.observe()
-        items = [e for e in s.elements() if "click" in e["actions"] and words(e["label"]) in wanted
+        items = [e for e in s.elements() if "click" in e["actions"] and _is_item(s, e, menu)
                  and not blocked(e["label"]) and _stays_on_site(s, e)]
         if items or n == LOOKS - 1:
             return items

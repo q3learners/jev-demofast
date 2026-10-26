@@ -74,7 +74,8 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
                     break
                 mode = "act_here"  # Jev thought this listing was enough, but it isn't filtered as the goal asks yet
             if mode == "act_here" and filterable:
-                expected = apply_filters(cf, s, rec, goal, entry, log)
+                unavailable = []
+                expected = apply_filters(cf, s, rec, goal, entry, log, unavailable=unavailable)
                 filled.add(path)
                 if expected is None:
                     log(f"GUARD: left {s.host}; stopped")
@@ -86,7 +87,8 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
                 result["verified"] = ok
                 if ok:
                     showcase(cf, s, rec, goal, log)
-                why = "the filtered listing didn't show what the goal asks for"
+                why = ("the site has no results for " + " and ".join(unavailable) + " with the other filters"
+                       if unavailable else "the filtered listing didn't show what the goal asks for")
                 break
             if mode == "done":
                 # "done" counts only if the screen itself confirms it: after a refused invite, Jev once chose "done"

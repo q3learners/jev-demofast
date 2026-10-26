@@ -17,6 +17,10 @@ FILTER_VALUES = """Choose the listing filters a shopper would apply for the goal
 exact values. Return JSON {"checks": [{"group": "...", "value": "..."}], "ranges": [{"group": "...", "min": "...",
 "max": "..."}], "sort": "<a sort option, or null>"}. Use values exactly as listed; for a price limit tick every price
 band within it (e.g. under $100: "Under $75" and "$76 - $100"). Only what the goal asks for; omit everything else."""
+# Shopify disables a filter value that would leave no results; the page reader skips disabled controls.
+DISABLED_JS = """[...document.querySelectorAll('input[type=checkbox]:disabled,input[type=radio]:disabled')]
+  .map(e => (e.labels?.[0]?.innerText || e.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim())
+  .filter(Boolean)"""
 LOW_HINT, HIGH_HINT = {"gte", "min", "from", "low"}, {"lte", "max", "to", "high"}
 
 
@@ -70,9 +74,15 @@ def _click(s, rec, e, action, guard=True):
     return True
 
 
-def apply_filters(cf, s, rec, goal, entry, log=print):
+def _disabled(s, value):
+    want = words(value)
+    return any(want and want <= words(label) for label in s.browser.evaluate(DISABLED_JS) or [])
+
+
+def apply_filters(cf, s, rec, goal, entry, log=print, unavailable=None):
     """Apply the filters the goal calls for, on camera. Returns the URL parameters expected afterwards
-    ("<param>=<value>"), for filters whose URL form the map knows; None if a click led off the site."""
+    ("<param>=<value>"), for filters whose URL form the map knows; None if a click led off the site. Values the site
+    has disabled (no results with the other filters) are appended to `unavailable` as "<group>: <value>"."""
     choices = choose_filters(cf, goal, entry.get("filters", []), entry.get("sort"))
     by_group = {f["group"]: f for f in entry.get("filters", [])}
     expected = []
@@ -93,7 +103,12 @@ def apply_filters(cf, s, rec, goal, entry, log=print):
                     return None
                 e = _find(s, c["value"], ("checkbox", "radio", "option", "switch"))
         if e is None:
-            log(f"  filter {c['group']}: {c['value']!r} isn't on screen; skipped")
+            if _disabled(s, c["value"]):
+                log(f"  filter {c['group']}: {c['value']!r} is unavailable (the site has no results for it here)")
+                if unavailable is not None:
+                    unavailable.append(f"{c['group']}: {c['value']}")
+            else:
+                log(f"  filter {c['group']}: {c['value']!r} isn't on screen; skipped")
             continue
         clicked = _click(s, rec, e, {"do": "filter", "target": f"{c['group']}: {c['value']}"}, guard=False)
         if clicked is LEFT_SITE:

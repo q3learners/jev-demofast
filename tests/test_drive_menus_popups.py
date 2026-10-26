@@ -222,3 +222,34 @@ def test_a_menu_hidden_by_a_late_popup_is_tried_again(monkeypatch, tmp_path):
                            log=lambda m: None)
     assert result["verified"] is True
     assert shops[0].events == [("hover", "Men"), ("key", "Escape"), ("hover", "Men"), ("click", "Running")]
+
+
+def test_a_menu_item_is_matched_by_destination_not_only_by_label(monkeypatch, tmp_path):
+    """Live: the top bar's "New Arrivals" (/collections/new-arrivals-26) was clicked instead of the Men menu's."""
+    menu = {"opener": "Men", "opens_on": "hover",
+            "items": [{"label": "New Arrivals", "to": "/collections/mens-new-arrivals"}]}
+    both = [{"kind": "click", "node": 7, "id": "e7", "role": "link", "label": "New Arrivals"},
+            {"kind": "click", "node": 8, "id": "e8", "role": "link", "label": "New Arrivals"}]
+
+    class Two(Shop):
+        def observe(self):
+            page = super().observe()
+            if self.path == "/":
+                page["actions"] = HOME + (both if self.menu else both[:1])
+            return page
+
+        def href(self, node):
+            return {7: "https://shop.test/collections/new-arrivals-26",
+                    8: "https://shop.test/collections/mens-new-arrivals"}.get(node)
+    offered = []
+
+    class Watch(Cf):
+        def choose(self, instructions, options, state, allow_none=False):
+            if instructions.startswith("Which menu item"):
+                offered.extend(options)
+                return next(iter(options)), 0.9
+            return super().choose(instructions, options, state, allow_none)
+    monkeypatch.setattr(jev_drive, "Session", lambda url, fresh=False: Two(url))
+    jev_drive.run(Watch(), "https://shop.test/", "new arrivals for men", {**MAP, "_site": {"menus": [menu]}},
+                  out=str(tmp_path), max_steps=1, log=lambda m: None)
+    assert offered == ["8"]

@@ -230,3 +230,32 @@ def test_the_panel_is_reopened_when_a_filter_click_collapses_it():
     filters.apply_filters(Cf(UNDER_100), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None)
     assert [x for x in s.events if not x.startswith(("Filter", "Product Type"))] == [
         "Running Shoes (12)", "Under $75 (3)", "$76 - $100 (9)"]
+
+
+def test_a_filter_value_the_site_disabled_is_reported_unavailable():
+    """Live: with Running Shoes ticked, Allbirds disables every price band under $126: say so, don't just skip."""
+    class Disabled(Listing):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.panel = True
+
+        @property
+        def browser(self):
+            inner = super().browser
+
+            class B:
+                def evaluate(self, js, **k):
+                    return ["Under $75", "$76 - $100"] if "disabled" in js else inner.evaluate(js)
+
+                def call(self, method, **params):
+                    return inner.call(method, **params)
+            return B()
+
+        def observe(self):
+            page = super().observe()
+            page["actions"] = [a for a in page["actions"] if "$" not in a["label"] or a["role"] == "link"]
+            return page
+    unavailable = []
+    filters.apply_filters(Cf(UNDER_100), Disabled(), Rec(), "goal", MAP["/collections/:handle"],
+                          log=lambda m: None, unavailable=unavailable)
+    assert unavailable == ["Price: Under $75", "Price: $76 - $100"]
