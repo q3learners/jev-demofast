@@ -48,6 +48,7 @@ class Shop:
         return self.page
 
     def elements(self): return observed(self.page)
+    def full_text(self): return self.page["text"]
     def href(self, node): return None
     def wait_for_page(self): return "settled"
     def next_frame(self): pass
@@ -66,7 +67,7 @@ class Shop:
 class Cf:
     stats = {"jev_calls": 0, "jev_seconds": 0.0, "llm_calls": 0, "llm_seconds": 0.0}
     decisions = []
-    s = type("S", (), {"check_model": "typesafe/jev"})
+    s = type("S", (), {"check_model": "typesafe/jev", "read_model": "nemotron"})
 
     def __init__(self):
         self.asked = []
@@ -83,6 +84,9 @@ class Cf:
 
     def yes(self, instructions, state, true="yes", false="no", model=None, images=None):
         return 0.95
+
+    def chat_json(self, model, system, context, extra=None):  # the showcase reads the items off the final screen
+        return {"items": []}
 
 
 def run(monkeypatch, tmp_path):

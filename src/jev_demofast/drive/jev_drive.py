@@ -5,15 +5,19 @@ clickable option is annotated with where it leads (live href, else the code's ro
 contains (from the index). Acting, an LLM supplies only the words to type; Jev picks the submit button and then
 confirms "done" once the page has settled. Rules from measurements: act on a form only when Jev is ≥ 0.5 sure.
 """
+import base64
 import time
 from urllib.parse import urlparse
 
 from ..browser.elements import describe, words
 from ..index import route_for, summary
 from ..record.recorder import Recorder
+from .check import goal_reached
+from .filters import apply_filters, url_agrees
 from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, would_change
 from .menus import describe_menu, menu_options, open_menu
 from .popups import clear_popups
+from .showcase import showcase
 from .session import Session, StalePage, fingerprint
 
 CONFIDENT = 0.5
@@ -33,6 +37,7 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     log = rec.tee(log)
     result = {"goal": goal, "verified": False, "dry_run": dry_run}
     tried, filled, decisions, history = set(), set(), 0, []
+    explored, expected = "_site" in index, []  # an explored map: screenshot check, filters, a showcase ending
     why = "it ran out of steps"  # what the narration says if the goal isn't reached
     try:
         rec.snap(1.5)
@@ -56,6 +61,29 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
             if mode == "act_here" and conf < CONFIDENT:
                 mode = "navigate"  # calibrated confidence: act on a form only when Jev is sure it's the right one
             log(f"{ms():>6} ms  [{path}] Jev: {mode} ({conf:.2f})")
+            entry = index.get(route or "", {})
+            filterable = explored and entry.get("kind") == "listing" and entry.get("filters") and path not in filled
+            if explored and mode == "done":
+                ok, score = _explored_verdict(cf, goal, s, expected)
+                if ok or not filterable:
+                    log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: the screen shows the goal? {score:.2f}")
+                    result["verified"] = ok
+                    if ok:
+                        showcase(cf, s, rec, goal, log)
+                    why = "the screen didn't show the goal accomplished"
+                    break
+                mode = "act_here"  # Jev thought this listing was enough, but it isn't filtered as the goal asks yet
+            if mode == "act_here" and filterable:
+                expected = apply_filters(cf, s, rec, goal, entry, log)
+                filled.add(path)
+                ok, score = _explored_verdict(cf, goal, s, expected)
+                log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: filtered listing shows the goal? {score:.2f}"
+                    f"{'' if url_agrees(s.page['url'], expected) else ' (the URL lacks the filters)'}")
+                result["verified"] = ok
+                if ok:
+                    showcase(cf, s, rec, goal, log)
+                why = "the filtered listing didn't show what the goal asks for"
+                break
             if mode == "done":
                 # "done" counts only if the screen itself confirms it: after a refused invite, Jev once chose "done"
                 # (0.70) on a page saying "User is already a member of this team" while the page check said 0.25.
@@ -143,6 +171,14 @@ def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
         # a step of the goal, not a failure.)
         rec.actions[-1]["outcome"] = "not confirmed: the page did not show success"
     return done >= CONFIDENT
+
+
+def _explored_verdict(cf, goal, s, expected):
+    """Explored maps: the screen must show the goal (Clef + screenshot, 0.75) and the URL must carry the filters the
+    map knows the URL form of."""
+    shot = lambda: base64.b64decode(s.browser.call("Page.captureScreenshot", format="jpeg", quality=80)["data"])
+    ok, score = goal_reached(cf, goal, s.observe(), shot)
+    return ok and url_agrees(s.page["url"], expected), score
 
 
 def confirm_score(cf, goal, page, just_did=None):
