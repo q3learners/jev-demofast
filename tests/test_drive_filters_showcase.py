@@ -187,3 +187,25 @@ def test_price_boxes_only_take_numbers():
     assert filters.choose_filters(Cf(picks), "goal", entry["filters"])["ranges"] == []
     picks["ranges"][0]["max"] = "$100"
     assert filters.choose_filters(Cf(picks), "goal", entry["filters"])["ranges"] == [{"group": "Price", "min": None, "max": "100"}]
+
+
+def test_a_collapsed_filter_panel_is_opened_first():
+    """Allbirds keeps every filter group behind one "Filter" button: open it, then the group, then the value."""
+    class Collapsed(Listing):
+        opened = False
+
+        def observe(self):
+            page = super().observe()
+            if not self.opened:
+                page["actions"] = [{"kind": "click", "node": 9, "id": "e9", "role": "button",
+                                    "label": "Filter Collapse filter"}] + [a for a in page["actions"] if a["role"] == "link"]
+            return page
+
+        def act(self, e, kind, text=None):
+            if e["label"].startswith("Filter"):
+                self.opened = True
+            super().act(e, kind, text)
+    s, rec = Collapsed(), Rec()
+    expected = filters.apply_filters(Cf(UNDER_100), s, rec, "goal", MAP["/collections/:handle"], log=lambda m: None)
+    assert s.events[:3] == ["Filter Collapse filter", "Product Type", "Running Shoes (12)"]
+    assert expected == ["filter.p.type=Running Shoes"] and rec.commits[0]["target"] == "open the filters"
