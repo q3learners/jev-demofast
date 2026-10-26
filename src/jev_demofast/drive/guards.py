@@ -8,6 +8,9 @@ from ..config import secret
 BLOCKED = re.compile(r"sign ?up|register|create (an )?account|google|apple|microsoft|github login|facebook|"
                      r"continue with|delete|remove|log ?out|sign ?out", re.I)
 PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
+# A placeholder named like a password ({{PASSWORD}}, {{ADMIN_PIN}}) goes into the password field; any other
+# ({{EMAIL}}) is typed into the visible field a model picked, like plain text.
+PASSWORD_NAME = re.compile(r"(?:^|_)(?:pass(?:word|code|phrase)?|pwd?|pin)(?:_|$)", re.I)
 # "Create a demo of how to X" / "Show me how to X" asks for X: the framing is about the video, not the task.
 DEMO_FRAMING = re.compile(r"^\s*(?:(?:create|make|record|build|generate)\s+(?:a|an|the)?\s*(?:product\s+)?"
                           r"(?:demo|video|walkthrough)(?:\s+video)?(?:\s*[:\-]\s*|\s+(?:of|showing|on|for)\s+)"
@@ -34,6 +37,12 @@ def on_site(url, host):
 
 def has_secret(value):
     return bool(PLACEHOLDER.search(value or ""))
+
+
+def password_secret(text):
+    """The {{NAME}} in `text` to type into the password field, or None. Password inputs are never observed, so no
+    model can pick them; only a placeholder named like a password is sent there."""
+    return next((name for name in PLACEHOLDER.findall(text or "") if PASSWORD_NAME.search(name)), None)
 
 
 def fill_text(value):
