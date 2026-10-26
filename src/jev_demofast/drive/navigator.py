@@ -170,8 +170,12 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
             if i >= len(steps) and not done_text and reads_last:
                 # an information goal is done when the screen shows what it asked for, not merely when a read returned text
                 result["verified"], score = shows_answer(cf, goal, steps[-1]["target"], result["items"], s.page, shot)
-                log(f"{ms():>6} ms  {'VERIFIED' if result['verified'] else 'NOT SHOWN'}: the screen shows "
+                log(f"{ms():>6} ms  {'SHOWN' if result['verified'] else 'NOT SHOWN'}: the screen shows "
                     f"{steps[-1]['target'][:50]!r}? {score:.2f}")
+                if result["verified"]:  # real content, but is it the content asked for ('this week', not 'Today')?
+                    result["verified"], score = goal_reached(cf, goal, s.page, shot)
+                    log(f"{ms():>6} ms  {'VERIFIED' if result['verified'] else 'NOT REACHED'}: the screen is in the "
+                        f"state the goal asks for? {score:.2f}")
             if i >= len(steps) and not reads_last and not result["verified"]:
                 # The plan's finish phrase is a guess at the final page's wording: it verifies if it's there; otherwise the
                 # decision model judges the screen (GitHub's weekly Trending page says "most excited about this week", not
