@@ -174,6 +174,7 @@ Any other OpenAI-compatible provider is one entry in `LLM_PROVIDERS` in `src/jev
 | `JDF_READ_MODEL` | `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | reading page text and form values |
 | `JDF_SCRIPT_MODEL` / `JDF_SCRIPT_EXTRA` | GLM-5.3-flash, reasoning low | the narration script |
 | `JDF_TTS_MODEL`, `JDF_EMBED_MODEL`, `JDF_JEV_MODEL` | Aura-2 en, bge-base, `typesafe/jev` | voice, camera-follow, decisions |
+| `JDF_CHECK_MODEL` | the Jev model | confirms a demo that asks for information really shows it; set `@cf/cloudflare/clef` to also send a screenshot |
 | `DEMO_<NAME>` | — | values for `{{NAME}}` placeholders in prompts |
 | `JDF_LLM_PROVIDER` | `cloudflare` | where route plans, page reading and scripts run: `cloudflare` or `nebius` |
 | `NEBIUS_API_KEY`, `JDF_NEBIUS_MODEL` | — / `nvidia/Nemotron-3-Ultra-550b-a55b` | Nebius Token Factory key and model (thinking off) |
