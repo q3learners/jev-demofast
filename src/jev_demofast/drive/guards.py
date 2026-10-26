@@ -60,6 +60,13 @@ def task_goal(prompt):
     return DEMO_FRAMING.sub("", prompt, count=1).strip() or prompt
 
 
+def stop_if_dry_run(rec, e, s):
+    """In a dry run, stop before the first click that would change data, recording it as "would click"."""
+    if getattr(rec, "dry_run", False) and would_change(e):
+        rec.would_click(e["node"], e["label"], s.observe())
+        raise DryRunStop(e["label"][:60])
+
+
 def would_change(e):
     """True if clicking this element would change data (a submit-like button or a toggle), not just navigate."""
     return e["role"] in TOGGLES or (e["role"] != "link" and bool(CHANGES.search(e["label"] or "")))

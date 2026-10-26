@@ -73,3 +73,9 @@ def test_an_uncovered_page_needs_nothing():
     s = PopupSession([el(1, "link", "Men")])
     s.covered = False
     assert popups.clear_popups(Cf(), s, log=lambda m: None) is None and s.keys == []
+
+
+def test_a_closer_that_would_change_data_is_not_used():
+    """A cookie banner's "Save preferences" changes settings: never the way to clear the page (dry runs included)."""
+    s, cf = PopupSession([el(1, "button", "Save preferences")], close_label="Save preferences"), Cf("Save preferences")
+    assert popups.clear_popups(cf, s, log=lambda m: None) is None and s.acted == []

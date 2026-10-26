@@ -110,3 +110,72 @@ def test_a_popup_that_appears_mid_run_is_cleared(monkeypatch, tmp_path):
     monkeypatch.setattr(Shop, "popup_on_listing", True)
     result, shop = run(monkeypatch, tmp_path)
     assert shop.events == [("hover", "Men"), ("click", "Running"), ("key", "Escape")] and result["verified"] is True
+
+
+def test_menu_items_that_are_blocked_or_off_site_are_not_offered(monkeypatch, tmp_path):
+    menu = {"opener": "Men", "opens_on": "hover", "items": [{"label": "Running", "to": "/collections/mens-running"},
+                                                            {"label": "Sign up", "to": "/account/register"},
+                                                            {"label": "Partner store", "to": "/partner"}]}
+    extra = [{"kind": "click", "node": 4, "id": "e4", "role": "link", "label": "Sign up"},
+             {"kind": "click", "node": 5, "id": "e5", "role": "link", "label": "Partner store"}]
+
+    class Guarded(Shop):
+        def observe(self):
+            page = super().observe()
+            if self.menu:
+                page["actions"] += extra
+            return page
+
+        def href(self, node):
+            return "https://elsewhere.test/" if node == 5 else None
+    offered = []
+
+    class Watch(Cf):
+        def choose(self, instructions, options, state, allow_none=False):
+            if instructions.startswith("Which menu item"):
+                offered.extend(options.values())
+            return super().choose(instructions, options, state, allow_none)
+    monkeypatch.setattr(jev_drive, "Session", lambda url, fresh=False: Guarded(url))
+    jev_drive.run(Watch(), "https://shop.test/", "find running shoes", {**MAP, "_site": {"menus": [menu]}},
+                  out=str(tmp_path), log=lambda m: None)
+    assert offered == ["Running"]
+
+
+def test_a_menu_item_that_leaves_the_site_stops_the_run(monkeypatch, tmp_path):
+    class Leaves(Shop):
+        def act(self, e, kind, text=None):
+            super().act(e, kind, text)
+            if e["label"] == "Running":
+                self.host_left = True
+
+        def observe(self):
+            page = super().observe()
+            if getattr(self, "host_left", False):
+                page["url"] = "https://elsewhere.test/landing"
+            return page
+    monkeypatch.setattr(jev_drive, "Session", lambda url, fresh=False: Leaves(url))
+    result = jev_drive.run(Cf(), "https://shop.test/", "find running shoes", MAP, out=str(tmp_path), log=lambda m: None)
+    assert result["verified"] is False
+    last = json.loads((tmp_path / "actions.json").read_text())["actions"][-1]
+    assert "away from" in last["outcome"] or "no way" in last["outcome"]
+
+
+def test_a_dry_run_stops_before_a_data_changing_menu_item(monkeypatch, tmp_path):
+    menu = {"opener": "Men", "opens_on": "hover", "items": [{"label": "Add to bag", "to": "/cart/add"}]}
+
+    class Bag(Shop):
+        def observe(self):
+            page = super().observe()
+            if self.menu:
+                page["actions"] = HOME + [{"kind": "click", "node": 6, "id": "e6", "role": "button", "label": "Add to bag"}]
+            return page
+
+    class PickBag(Cf):
+        def choose(self, instructions, options, state, allow_none=False):
+            if instructions.startswith("Which menu item"):
+                return next(iter(options)), 0.9
+            return super().choose(instructions, options, state, allow_none)
+    monkeypatch.setattr(jev_drive, "Session", lambda url, fresh=False: Bag(url))
+    result = jev_drive.run(PickBag(), "https://shop.test/", "add shoes to the bag", {**MAP, "_site": {"menus": [menu]}},
+                           out=str(tmp_path), dry_run=True, log=lambda m: None)
+    assert result.get("would_click") == "Add to bag"

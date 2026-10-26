@@ -14,8 +14,8 @@ from ..index import route_for, summary
 from ..record.recorder import Recorder
 from .check import goal_reached
 from .filters import apply_filters, url_agrees
-from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, would_change
-from .menus import describe_menu, menu_options, open_menu
+from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, stop_if_dry_run
+from .menus import LEFT_SITE, describe_menu, menu_options, open_menu
 from .popups import clear_popups
 from .showcase import showcase
 from .session import Session, StalePage, fingerprint
@@ -248,6 +248,9 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, 
     tried.add((path, e["node"]))
     if e["node"] in menus:
         item = open_menu(cf, s, rec, e, menus[e["node"]], goal, state, log)
+        if item is LEFT_SITE:
+            log(f"GUARD: left {s.host}; stopped")
+            return False
         if item:
             history.append(f"opened the {e['label'][:30]} menu and clicked '{item[:40]}' on {path}")
         return True
@@ -274,7 +277,4 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, 
     return True
 
 
-def _stop_if_dry_run(rec, e, s):
-    if getattr(rec, "dry_run", False) and would_change(e):
-        rec.would_click(e["node"], e["label"], s.observe())
-        raise DryRunStop(e["label"][:60])
+_stop_if_dry_run = stop_if_dry_run
