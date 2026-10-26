@@ -15,6 +15,8 @@ from .pick import Picker
 from .plan import extract, make_plan
 from .session import Session, StalePage, fingerprint
 
+STALE_TRIES = 3  # an element still covered after this many tries is given up on
+
 
 def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan=True, page_maps=False,
         blur_typed=True, dry_run=False, log=print):
@@ -31,7 +33,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
         plan = make_plan(cf, goal, s.page)
         steps, done_text = plan["steps"], plan["done_text"]
         log(f"{ms():>6} ms  plan: " + " → ".join(f"{st['do']} {st['target']!r}" for st in steps))
-        i, actions, replans, reveals, failed, done = 0, 0, 0, {}, set(), []
+        i, actions, replans, reveals, failed, done, stale = 0, 0, 0, {}, set(), [], {}
         while i < len(steps) and actions < max_steps:
             step, page = steps[i], s.page
             if step["do"] == "read":
@@ -63,7 +65,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                 # Fail closed: a secret is never typed into a visible field a model picked.
                 log(f"{ms():>6} ms  STUCK: no password field for {step['target']!r}; a secret is never typed elsewhere")
                 break
-            els =[e for e in s.elements() if kind in e["actions"] and (page["url"], e["node"]) not in failed
+            els = [e for e in s.elements() if kind in e["actions"] and (page["url"], e["node"]) not in failed
                    and not blocked(e["label"], unless=step["target"])]
             chosen, conf, how = pick.pick(step["target"], kind, els, page, goal)
             if chosen is None:
@@ -71,7 +73,13 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                 if opener is not None:
                     reveals[i] = reveals.get(i, 0) + 1
                     rec.snap(1.2, node=opener["node"])
-                    s.act(opener, "click")
+                    try:
+                        s.act(opener, "click")
+                    except StalePage:  # covered or gone: don't offer it as an opener again
+                        failed.add((page["url"], opener["node"]))
+                        rec.discard()
+                        s.observe()
+                        continue
                     time.sleep(0.5)
                     s.observe()
                     rec.snap(0.8)
@@ -96,7 +104,10 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
             before = fingerprint(s.observe())
             try:
                 s.act(chosen, kind, text=fill_text(step.get("value")) if kind == "fill" else None)
-            except StalePage:
+            except StalePage:  # the page moved under us: look again, but an element that stays covered is dropped
+                stale[(page["url"], chosen["node"])] = stale.get((page["url"], chosen["node"]), 0) + 1
+                if stale[(page["url"], chosen["node"])] >= STALE_TRIES:
+                    failed.add((page["url"], chosen["node"]))
                 rec.discard()
                 s.observe()
                 continue
