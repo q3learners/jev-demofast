@@ -88,6 +88,11 @@ def apply_filters(cf, s, rec, goal, entry, log=print, unavailable=None):
     expected = []
     for c in choices["checks"]:
         e = _find(s, c["value"], ("checkbox", "radio", "option", "switch"))
+        if e is None and _disabled(s, c["value"]):  # known from the page: no panel or heading clicked looking for it
+            log(f"  filter {c['group']}: {c['value']!r} is unavailable (the site has no results for it here)")
+            if unavailable is not None:
+                unavailable.append(f"{c['group']}: {c['value']}")
+            continue
         # Each filter click may reload the listing with the panel collapsed again (Allbirds): reopen it when needed.
         if e is None and _find(s, c["group"], ("button", "link", "tab")) is None:
             panel = next((x for x in s.elements() if x["role"] in ("button", "link") and PANEL.search(x["label"])

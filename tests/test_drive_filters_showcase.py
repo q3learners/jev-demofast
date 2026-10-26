@@ -254,8 +254,33 @@ def test_a_filter_value_the_site_disabled_is_reported_unavailable():
         def observe(self):
             page = super().observe()
             page["actions"] = [a for a in page["actions"] if "$" not in a["label"] or a["role"] == "link"]
+            page["actions"].append({"kind": "click", "node": 14, "id": "e14", "role": "button", "label": "Price"})
             return page
-    unavailable = []
-    filters.apply_filters(Cf(UNDER_100), Disabled(), Rec(), "goal", MAP["/collections/:handle"],
+    unavailable, s = [], Disabled()
+    filters.apply_filters(Cf(UNDER_100), s, Rec(), "goal", MAP["/collections/:handle"],
                           log=lambda m: None, unavailable=unavailable)
     assert unavailable == ["Price: Under $75", "Price: $76 - $100"]
+    assert "Price" not in s.events  # a disabled value is known from the page: no heading clicked looking for it
+
+
+def test_the_showcase_closes_an_open_filter_panel_first():
+    """Live: the showcase outlined shoes hidden behind the still-open filter panel."""
+    s, keys = Listing(), []
+    s.panel = True
+    inner = Listing.browser.fget(s)
+
+    class B:
+        def evaluate(self, js, **k):
+            return inner.evaluate(js)
+
+        def call(self, method, **params):
+            if method == "Input.dispatchKeyEvent" and params.get("type") == "keyDown":
+                keys.append(params["key"])
+                s.panel = False
+            return inner.call(method, **params)
+    type(s).browser = property(lambda self: B())
+    try:
+        showcase.showcase(Cf(UNDER_100), s, Rec(), "goal", log=lambda m: None)
+    finally:
+        type(s).browser = Listing.browser
+    assert keys == ["Escape"]

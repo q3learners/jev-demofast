@@ -14,6 +14,9 @@ def _on_screen(s, item):
 
 def showcase(cf, s, rec, goal, log=print, count=3):
     """Highlight up to `count` items, then commit one "read" segment listing them. Returns the items."""
+    for kind in ("keyDown", "keyUp"):  # close a filter panel or drawer still open over the results
+        s.browser.call("Input.dispatchKeyEvent", type=kind, key="Escape", code="Escape", windowsVirtualKeyCode=27)
+    s.wait_for_page()
     page = s.observe()
     items = extract(cf, WHAT, page["url"], s.full_text())
     for item in items[:count]:
