@@ -179,3 +179,25 @@ def test_a_dry_run_stops_before_a_data_changing_menu_item(monkeypatch, tmp_path)
     result = jev_drive.run(PickBag(), "https://shop.test/", "add shoes to the bag", {**MAP, "_site": {"menus": [menu]}},
                            out=str(tmp_path), dry_run=True, log=lambda m: None)
     assert result.get("would_click") == "Add to bag"
+
+
+def test_a_menu_opener_that_goes_stale_doesnt_crash_the_run(monkeypatch, tmp_path):
+    from jev_demofast.browser.cdp import StalePage
+
+    class Stale(Shop):
+        def hover(self, e):
+            self.events.append(("hover", e["label"]))  # hovering shows nothing
+
+        def act(self, e, kind, text=None):
+            if e["label"] == "Men":
+                raise StalePage("Target changed or is covered. Observe again.")
+            super().act(e, kind, text)
+    class AnyOption(Cf):  # once the menu has failed, the driver moves on to the other options
+        def choose(self, instructions, options, state, allow_none=False):
+            if instructions.startswith("Which option moves"):
+                return next((k for k, v in options.items() if "opens a menu" in v), next(iter(options))), 0.9
+            return super().choose(instructions, options, state, allow_none)
+    monkeypatch.setattr(jev_drive, "Session", lambda url, fresh=False: Stale(url))
+    result = jev_drive.run(AnyOption(), "https://shop.test/", "find running shoes", MAP, out=str(tmp_path),
+                           log=lambda m: None)
+    assert result["verified"] is False  # no crash: the menu simply didn't open, and the run ended honestly

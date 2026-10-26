@@ -43,23 +43,29 @@ def _stays_on_site(s, e):
     return not href or on_site(href, s.host)
 
 
+def _open(s, rec, opener, menu, how):
+    """Hover or click the opener; the menu's items now on screen ([] if it didn't open, or the opener went stale)."""
+    if how == "click":
+        stop_if_dry_run(rec, opener, s)
+    try:
+        s.hover(opener) if how == "hover" else s.act(opener, "click")
+    except StalePage:  # moved or covered (another menu, a pop-up): this menu didn't open
+        s.observe()
+        return []
+    s.wait_for_page()
+    return _items_on_screen(s, menu)
+
+
 def open_menu(cf, s, rec, opener, menu, goal, state, log):
     """Open the menu on camera and click the item Jev picks. Returns the clicked item's label; None if the menu showed
     none of its items; LEFT_SITE if the item led off the site. Items get the same guards as any click: blocked labels
     and off-site links are never offered, and a dry run stops before one that would change data."""
     rec.snap(1.0, node=opener["node"])
     how = menu.get("opens_on", "click")
-    if how == "click":
-        stop_if_dry_run(rec, opener, s)
-    s.hover(opener) if how == "hover" else s.act(opener, "click")
-    s.wait_for_page()
-    items = _items_on_screen(s, menu)
+    items = _open(s, rec, opener, menu, how)
     if not items and how == "hover" and opener["role"] == "button":  # recorded as hover, but it may only open on click
         how = "click"
-        stop_if_dry_run(rec, opener, s)
-        s.act(opener, "click")
-        s.wait_for_page()
-        items = _items_on_screen(s, menu)
+        items = _open(s, rec, opener, menu, how)
     if not items:
         rec.discard()
         log(f"menu {opener['label'][:24]!r}: none of its items appeared")
