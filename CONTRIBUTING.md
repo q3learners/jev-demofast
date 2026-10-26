@@ -9,8 +9,8 @@ scoped and ready. The two areas that matter most right now:
 
 - **Index readers for more frameworks.** The source-code map only reads Next.js (app router) today. React Router
   and Remix are the natural next ones, then Rails and Django.
-- **Waiting for pages instead of fixed pauses.** The drivers sleep for fixed times after actions
-  (`src/jev_demofast/drive/`). Waiting on real page readiness would make runs faster and steadier.
+- **The last polling waits.** Clicks now wait for the page to go quiet (`Session.wait_for_page`), but `settle()`
+  after a form submit and the lookahead in `drive/pick.py` still poll on fixed intervals.
 
 For anything bigger than a bug fix, open an issue first (or comment on one), so we can agree on the approach before
 you write the code.

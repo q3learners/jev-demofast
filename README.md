@@ -193,7 +193,7 @@ browser-harness telemetry and update checks are off by default (`BH_TELEMETRY=0`
 ## Contributing
 
 Contributions are welcome, especially index readers for more frameworks (React Router, Remix, Rails, Django) and
-waiting on page readiness instead of fixed pauses. Start with the
+the last polling waits (after a form submit, and while looking ahead for the next step). Start with the
 [good first issues](https://github.com/q3learners/jev-demofast/labels/good%20first%20issue) and read
 [CONTRIBUTING.md](CONTRIBUTING.md) for setup (the tests run offline) and guidelines.
 

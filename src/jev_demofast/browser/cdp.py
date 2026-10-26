@@ -40,8 +40,8 @@ class Browser:
     def call(self, method, **params):
         return cdp(method, session_id=self.session, **params)
 
-    def evaluate(self, expression):
-        response = self.call("Runtime.evaluate", expression=expression, returnByValue=True)
+    def evaluate(self, expression, await_promise=False):
+        response = self.call("Runtime.evaluate", expression=expression, returnByValue=True, awaitPromise=await_promise)
         if response.get("exceptionDetails"):
             raise StalePage("Document changed during evaluation")
         return response.get("result", {}).get("value")

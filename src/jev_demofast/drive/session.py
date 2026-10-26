@@ -7,6 +7,20 @@ from ..browser.elements import observed
 
 __all__ = ["Session", "StalePage", "fingerprint", "origin", "site_cookies"]
 
+# After an action, instead of a fixed pause: a page that doesn't react within IDLE_S is taken as unchanged (what the
+# old 0.4 s pause assumed); one that does is read once its DOM has been quiet for QUIET_S. MAX_S caps pages that never
+# stop changing (tickers, animations). Polled from Python: Chrome throttles timers in background tabs.
+IDLE_S, QUIET_S, MAX_S, POLL_S = 0.4, 0.12, 2.0, 0.03
+ARM = """(() => { window.__jdfWatch?.obs.disconnect();
+  const w = {start: performance.now(), last: null};
+  w.obs = new MutationObserver(() => { w.last = performance.now(); });
+  w.obs.observe(document.documentElement, {subtree: true, childList: true, attributes: true, characterData: true});
+  window.__jdfWatch = w; return true; })()"""
+WATCH_STATE = """(() => { const w = window.__jdfWatch; if (!w) return null; const now = performance.now();
+  return {since_start: now - w.start, since_last: w.last === null ? null : now - w.last}; })()"""
+NEXT_FRAME = """new Promise(done => { setTimeout(done, 100);
+  requestAnimationFrame(() => requestAnimationFrame(done)); })"""
+
 
 def origin(url):
     """scheme://host[:port]: storage belongs to an origin, so the port matters (localhost:3000)."""
@@ -68,7 +82,46 @@ class Session:
 
     def act(self, element, kind, text=None):
         element = self.refind(element)
+        self.arm()
         self.browser.act(element["actions"][kind], self.page, text=text)
+
+    def arm(self):
+        """Start watching the page for changes, so wait_for_page() sees what the next action does."""
+        try:
+            self.browser.evaluate(ARM)
+        except (StalePage, RuntimeError):  # mid-navigation: wait_for_page treats the new document as navigated
+            pass
+
+    def wait_for_page(self, idle_s=IDLE_S, quiet_s=QUIET_S, max_s=MAX_S):
+        """Wait for the page to finish reacting to the last action. Returns "unchanged", "settled", "navigated"
+        (a new document loaded and went quiet) or "busy" (still changing at max_s)."""
+        deadline, navigated = time.monotonic() + max_s, False
+        while True:
+            try:
+                w = self.browser.evaluate(WATCH_STATE)
+            except (StalePage, RuntimeError):
+                w = None
+            if w is None and not navigated:  # the action loaded a new document: let it load, then watch it
+                navigated = True
+                self.wait_loaded()
+                self.arm()
+                idle_s = quiet_s
+                continue
+            if w is not None:
+                if w["since_last"] is None and w["since_start"] >= idle_s * 1000:
+                    return "navigated" if navigated else "unchanged"
+                if w["since_last"] is not None and w["since_last"] >= quiet_s * 1000:
+                    return "navigated" if navigated else "settled"
+            if time.monotonic() >= deadline:
+                return "busy"
+            time.sleep(POLL_S)
+
+    def next_frame(self):
+        """Wait until the page has painted (two animation frames; at most 0.1 s), e.g. after a scroll or an outline."""
+        try:
+            self.browser.evaluate(NEXT_FRAME, await_promise=True)
+        except (StalePage, RuntimeError):
+            pass
 
     def href(self, node):
         href = self.browser.evaluate(f"(() => {{ const n=window.__jevFast?.nodes.get({node}); "

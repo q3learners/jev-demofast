@@ -32,6 +32,7 @@ def test_jev_drive_types_the_email_into_the_email_field_and_the_password_into_th
         def act(self, e, kind, text=None): self.typed.append((e["label"], kind, text))
         def type_secret_into_password(self, text): self.password.append(text); return True
         def observe(self): return self.page
+        def next_frame(self): pass
         def settle(self, before, max_s=6.0): return {"url": "https://app.test/dashboard", "text": "Welcome back"}
 
     class FakeCf:
