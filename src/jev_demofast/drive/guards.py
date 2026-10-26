@@ -8,9 +8,10 @@ from ..config import secret
 BLOCKED = re.compile(r"sign ?up|register|create (an )?account|google|apple|microsoft|github login|facebook|"
                      r"continue with|delete|remove|log ?out|sign ?out", re.I)
 PLACEHOLDER = re.compile(r"\{\{(\w+)\}\}")
-# A placeholder named like a password ({{PASSWORD}}, {{ADMIN_PIN}}) goes into the password field; any other
-# ({{EMAIL}}) is typed into the visible field a model picked, like plain text.
-PASSWORD_NAME = re.compile(r"(?:^|_)(?:pass(?:word|code|phrase)?|pwd?|pin)(?:_|$)", re.I)
+# A placeholder named like a password or other secret ({{PASSWORD}}, {{MYPASSWD}}, {{API_TOKEN}}, {{ADMIN_PIN}})
+# goes only into the password field; any other ({{EMAIL}}) is typed into the visible field a model picked. When in
+# doubt it counts as a secret: a secret typed into a visible field could show on screen or be sent somewhere else.
+PASSWORD_NAME = re.compile(r"pass|pwd|secret|token|credential|(?:^|_)(?:pw|pin|otp|key|code)(?:_|$)", re.I)
 # "Create a demo of how to X" / "Show me how to X" asks for X: the framing is about the video, not the task.
 DEMO_FRAMING = re.compile(r"^\s*(?:(?:create|make|record|build|generate)\s+(?:a|an|the)?\s*(?:product\s+)?"
                           r"(?:demo|video|walkthrough)(?:\s+video)?(?:\s*[:\-]\s*|\s+(?:of|showing|on|for)\s+)"

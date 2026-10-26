@@ -9,6 +9,8 @@ def test_only_a_password_named_placeholder_goes_to_the_password_field():
     assert password_secret("Sign in as {{EMAIL}} with password {{PASSWORD}}") == "PASSWORD"
     assert password_secret("{{ADMIN_PIN}}") == "ADMIN_PIN"
     assert password_secret("log in with {{PW}}") == "PW"
+    for name in ("PASSWD", "MYPASSWORD", "API_TOKEN", "CLIENT_SECRET", "OTP", "LICENSE_KEY", "ACCESS_CODE"):
+        assert password_secret("{{" + name + "}}") == name   # when in doubt, a secret: never a visible field
     assert password_secret("Reset my password for {{EMAIL}}") is None
     assert password_secret("ship to {{SHIPPING_ADDRESS}}") is None  # "PIN" inside a word doesn't count
     assert password_secret(None) is None
