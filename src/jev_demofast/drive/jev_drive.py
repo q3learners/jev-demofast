@@ -17,7 +17,7 @@ from .filters import apply_filters, url_agrees
 from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, stop_if_dry_run
 from .menus import LEFT_SITE, describe_menu, menu_options, open_menu
 from .popups import clear_popups, covered, first_screen
-from .showcase import showcase
+from .showcase import reveal_results, showcase
 from .session import Session, StalePage, fingerprint
 
 CONFIDENT = 0.5
@@ -110,6 +110,7 @@ def drive_goal(cf, s, rec, goal, index, max_steps, log, ms, steps=None):
                 log(f"GUARD: left {s.host}; stopped")
                 why = f"a click led away from {s.host}"
                 break
+            reveal_results(s)  # the check looks at the results, not the panel still open over them
             ok, score = _explored_verdict(cf, goal, s, expected)
             log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: filtered listing shows the goal? {score:.2f}"
                 f"{'' if url_agrees(s.page['url'], expected) else ' (the URL lacks the filters)'}")

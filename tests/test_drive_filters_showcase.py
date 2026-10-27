@@ -365,26 +365,29 @@ def test_a_slow_reload_in_the_cloud_doesnt_make_a_value_unavailable(monkeypatch)
     assert unavailable == [] and "Running Shoes (12)" in s.events
 
 
+class StickyPanel(Listing):
+    """Allbirds' filter panel: open over the results until its own \"Collapse filters\" control closes it."""
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.panel = True
+
+    def observe(self):
+        page = super().observe()
+        if self.panel:
+            page["actions"] += [{"kind": "click", "node": 40, "id": "e40", "role": "button", "label": "Collapse filters"},
+                                {"kind": "click", "node": 41, "id": "e41", "role": "button", "label": "Apply filters"}]
+        return page
+
+    def act(self, e, kind, text=None):
+        super().act(e, kind, text)
+        if e["label"] == "Collapse filters":
+            self.panel = False
+
+
 def test_the_showcase_closes_a_filter_panel_that_ignores_escape():
     """Cloud: Allbirds' panel stayed open over the results after Escape, so the video never showed them. Its own
     "Collapse filters" control closes it."""
-    class Sticky(Listing):
-        def __init__(self, *a, **k):
-            super().__init__(*a, **k)
-            self.panel = True
-
-        def observe(self):
-            page = super().observe()
-            if self.panel:
-                page["actions"] += [{"kind": "click", "node": 40, "id": "e40", "role": "button", "label": "Collapse filters"},
-                                    {"kind": "click", "node": 41, "id": "e41", "role": "button", "label": "Apply filters"}]
-            return page
-
-        def act(self, e, kind, text=None):
-            super().act(e, kind, text)
-            if e["label"] == "Collapse filters":
-                self.panel = False
-    s, rec = Sticky(), Rec()
+    s, rec = StickyPanel(), Rec()
     showcase.showcase(Cf(UNDER_100), s, rec, "goal", log=lambda m: None)
     assert s.events[0] == "Collapse filters" and not s.panel and rec.snaps[-3:] == [20, 21, 22]
 
@@ -460,3 +463,13 @@ def test_the_showcase_closes_a_toggle_panel_only_while_it_is_open():
     closed = Toggle()  # already closed: clicking the toggle would open it over the results
     showcase.showcase(Cf(UNDER_100), closed, Rec(), "goal", log=lambda m: None)
     assert closed.events == [] and not closed.panel
+
+
+def test_the_results_are_checked_with_the_filter_panel_closed(monkeypatch, tmp_path):
+    """Allbirds (mens-new-arrivals): the check scored 0.27 on a screen where the open panel hid every result."""
+    seen = []
+    real = jev_drive._explored_verdict
+    monkeypatch.setattr(jev_drive, "_explored_verdict",
+                        lambda cf, goal, s, expected: seen.append(s.panel) or real(cf, goal, s, expected))
+    run(monkeypatch, tmp_path, Cf(UNDER_100), listing=StickyPanel)
+    assert seen and seen[-1] is False

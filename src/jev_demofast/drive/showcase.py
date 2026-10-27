@@ -20,8 +20,9 @@ def _on_screen(s, item):
                 None)
 
 
-def showcase(cf, s, rec, goal, log=print, count=3):
-    """Highlight up to `count` items, then commit one "read" segment listing them. Returns the items."""
+def reveal_results(s):
+    """Close a filter panel or drawer still open over the results: Escape, else the panel's own close control.
+    Before the results are checked, and again before they're shown (Allbirds' panel hid every result from both)."""
     for kind in ("keyDown", "keyUp"):  # close a filter panel or drawer still open over the results
         s.browser.call("Input.dispatchKeyEvent", type=kind, key="Escape", code="Escape", windowsVirtualKeyCode=27)
     s.wait_for_page()
@@ -35,6 +36,11 @@ def showcase(cf, s, rec, goal, log=print, count=3):
             s.wait_for_page()
         except StalePage:  # it closed on its own meanwhile
             pass
+
+
+def showcase(cf, s, rec, goal, log=print, count=3):
+    """Highlight up to `count` items, then commit one "read" segment listing them. Returns the items."""
+    reveal_results(s)
     page = s.observe()
     items = extract(cf, WHAT, page["url"], s.full_text())
     shown = []
