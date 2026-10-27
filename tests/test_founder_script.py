@@ -1,0 +1,157 @@
+"""The founder's script is written before recording, from the prompt and the map; after recording it is fitted over
+the segments in the founder's own words, corrected only where the recording differs. Every demo has a map."""
+import json
+
+import pytest
+
+from jev_demofast import cli
+from jev_demofast import explore as explore_mod
+from jev_demofast.drive import jev_drive
+from jev_demofast.narrate import script, story
+
+from test_drive_filters_showcase import MAP, UNDER_100, Cf, Listing
+
+PROMPT = "Show my investors how easy it is to find men's running shoes under $150 on our site"
+SITE = {"_site": {"start": "https://shop.test/", "menus": [
+            {"opener": "Men", "opens_on": "hover", "items": [{"label": "Active", "to": "/collections/mens-active"},
+                                                             {"label": "Socks", "to": "/collections/socks"}]}]},
+        "/": {"links": [{"label": f"link {n}", "to": f"/x/{n}"} for n in range(80)], "fields": [], "texts": [
+            "Wildly Comfortable. Super Natural."], "kind": "page"},
+        "/collections/:handle": {"links": [], "fields": [], "texts": ["Men's Active Shoes"], "kind": "listing",
+                                 "filters": [{"group": "Price", "kind": "checkbox", "param": None,
+                                              "values": ["Under $75", "$126 - $150"]},
+                                             {"group": "Product Type", "kind": "checkbox", "param": None,
+                                              "values": ["Running Shoes", "Golf"]}]}}
+
+
+class Writer:
+    """A model that answers every chat with `reply`, keeping what it was asked."""
+    s = type("S", (), {"script_model": "nemotron", "script_extra": {}})
+
+    def __init__(self, reply):
+        self.reply, self.calls = reply, []
+
+    def chat(self, model, system, user, extra=None, max_tokens=4000):
+        self.calls.append({"model": model, "system": system, "user": json.loads(user)})
+        return self.reply
+
+
+def test_the_founders_script_is_written_from_the_prompt_and_the_map(tmp_path):
+    cf = Writer("Finding the right running shoe should take seconds. Watch.")
+    text = story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert text == "Finding the right running shoe should take seconds. Watch."
+    assert (tmp_path / "story.txt").read_text().strip() == text
+    (call,) = cf.calls
+    assert call["model"] == "nemotron" and "founder" in call["system"]
+    sent = json.dumps(call["user"])
+    assert PROMPT.replace("$", "") in sent.replace("$", "")  # the audience and purpose, as typed
+    for known in ("Men", "Active", "Product Type", "Running Shoes", "$126 - $150", "Wildly Comfortable"):
+        assert known in sent
+    assert "link 79" not in sent and len(sent) < 4000  # what the map knows, not the whole map
+
+
+def test_the_story_prompt_has_no_example_lines_about_shoes():
+    """Nemotron copied example lines word for word ("ten tabs", "heavy lifting"): nothing it could copy into a shop."""
+    for word in ("shoe", "filter", "price", "menu"):
+        assert word not in story.SAMPLE.lower()
+
+
+def actions(tmp_path, segs):
+    (tmp_path / "actions.json").write_text(json.dumps({"goal": "find running shoes", "actions": segs}))
+
+
+def test_narration_fits_the_founders_script_over_the_segments(tmp_path):
+    actions(tmp_path, [{"segment": "00", "do": "open"},
+                       {"segment": "01", "do": "filter", "target": "Price: $126 - $150",
+                        "unavailable": ["Price: Under $75"]},
+                       {"segment": "02", "do": "read", "target": "showcase", "items": ["Dasher NZ $140"]}])
+    (tmp_path / "story.txt").write_text("Finding a running shoe should take seconds. Our filters get you there.")
+    cf = Writer("00 | Open | Finding a running shoe should take seconds.\n01 | Price | Nothing under $75 today, so "
+                "we go up to $150.\n02 | Results | And there's the Dasher NZ at $140.")
+    lines = script.read_lines(script.write(cf, str(tmp_path), log=lambda m: None))
+    assert lines[0] == "Finding a running shoe should take seconds." and len(lines) == 3
+    call = cf.calls[0]
+    assert call["system"] == script.FIT.format(cap=script.LINE_CAP, budget=script.word_budget(3))
+    assert call["user"]["founder_script"].startswith("Finding a running shoe")
+    assert call["user"]["segments"][1]["unavailable"] == ["Price: Under $75"]  # the truth pass sees what was greyed out
+
+
+def test_without_a_founders_script_the_narration_is_written_as_before(tmp_path):
+    actions(tmp_path, [{"segment": "00", "do": "open"}])
+    cf = Writer("00 | Open | So here's the site.")
+    script.write(cf, str(tmp_path), log=lambda m: None)
+    assert cf.calls[0]["system"] == script.SYSTEM.format(cap=script.LINE_CAP, budget=script.word_budget(1))
+
+
+def test_a_founders_sentence_fits_the_word_budget():
+    """At 11 words a segment the model wrote captions; a spoken founder sentence needs more room."""
+    assert script.WORDS_PER_SEGMENT >= 16 and script.LINE_CAP >= 24
+    assert "2-6 words" not in script.SYSTEM and "2-6 words" not in script.FIT
+
+
+def test_filter_values_the_site_disabled_reach_the_narrator_on_their_own_filter(monkeypatch, tmp_path):
+    def apply(cf, s, rec, goal, entry, log, unavailable=None):
+        rec.commit({"do": "filter", "target": "Price: $126 - $150"}, s.page)
+        unavailable.append("Price: Under $75")
+        rec.commit({"do": "filter", "target": "Product Type: Running Shoes"}, s.page)
+        return []
+    monkeypatch.setattr(jev_drive, "apply_filters", apply)
+    monkeypatch.setattr(jev_drive, "Session", lambda url, fresh=False: Listing())
+    jev_drive.run(Cf(UNDER_100), "https://shop.test/collections/mens", "goal", MAP, out=str(tmp_path),
+                  log=lambda m: None)
+    segs = json.loads((tmp_path / "actions.json").read_text())["actions"]
+    price, kind = [a for a in segs if a["do"] == "filter"]
+    assert price["unavailable"] == ["Price: Under $75"] and "unavailable" not in kind
+
+
+@pytest.fixture
+def demo(monkeypatch, tmp_path):
+    """The demo command with explore, the script writer, the run and the render faked; returns what happened."""
+    seen = {"order": [], "explored": 0}
+    monkeypatch.setattr(cli, "MAPS", tmp_path / "maps")
+    monkeypatch.setattr(cli, "_cf", lambda a=None, require=True: "cf")
+
+    def explore(url, out=None, **k):
+        seen["explored"] += 1
+        seen["order"].append("explore")
+        found = {"_site": {"menus": [], "blocked": seen.get("blocked")}, "/": {"kind": "page"}}
+        with open(out, "w") as f:
+            json.dump(found, f)
+        return found
+    monkeypatch.setattr(explore_mod, "explore", explore)
+    monkeypatch.setattr(story, "write", lambda cf, prompt, index, work, log=print: seen["order"].append(
+        ("story", prompt, sorted(index))) or "script")
+
+    def run(a, cf=None):
+        seen["order"].append(("run", a.index))
+        return {"verified": True}
+    monkeypatch.setattr(cli, "cmd_run", run)
+    monkeypatch.setattr(cli, "cmd_narrate", lambda a, cf=None: seen["order"].append("narrate"))
+    monkeypatch.setattr(cli, "cmd_render", lambda a: seen["order"].append("render"))
+    monkeypatch.chdir(tmp_path)
+    return seen
+
+
+def test_a_demo_without_a_map_explores_first_then_writes_the_script_then_records(demo, tmp_path):
+    cli.main(["demo", PROMPT, "--url", "https://www.shop.test/", "--voice", "apollo", "--out", "d.mp4"])
+    cached = str(tmp_path / "maps" / "shop.test.json")
+    assert demo["order"] == ["explore", ("story", PROMPT, ["/", "_site"]), ("run", cached), "narrate"]
+
+
+def test_a_cached_map_is_reused(demo):
+    cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--voice", "apollo", "--out", "d.mp4"])
+    cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--voice", "apollo", "--out", "d.mp4"])
+    assert demo["explored"] == 1
+
+
+def test_a_given_map_is_used_as_is(demo, tmp_path):
+    (tmp_path / "mine.json").write_text(json.dumps({"/": {"kind": "page"}}))
+    cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--index", "mine.json", "--out", "d.mp4"])
+    assert demo["explored"] == 0 and demo["order"] == [("run", "mine.json"), "render"]  # no voice: no script
+
+
+def test_a_demo_on_a_site_that_blocks_the_tool_stops_before_recording(demo):
+    demo["blocked"] = "Access Denied"
+    with pytest.raises(SystemExit) as stop:
+        cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--out", "d.mp4"])
+    assert "blocked: Access Denied" in str(stop.value) and demo["order"] == ["explore"]
