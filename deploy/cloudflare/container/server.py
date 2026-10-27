@@ -57,6 +57,8 @@ def check_prompt(prompt):
         return "say what the demo should show"
     if len(prompt) > PROMPT_MAX:
         return f"keep the prompt under {PROMPT_MAX} characters"
+    if prompt.lstrip().startswith("-"):
+        return "start the prompt with a word, not '-'"
     return None
 
 
@@ -65,8 +67,9 @@ def check_voice(voice):
 
 
 def command(prompt, url, voice, work):
-    return ["jev-demofast", "demo", prompt, "--url", url, "--fresh", "--voice", voice,
-            "--out", os.path.join(work, "demo.mp4")]
+    # "--" ends the options: whatever the prompt says, it is the prompt, never a flag such as --index or --music.
+    return ["jev-demofast", "demo", "--url", url, "--fresh", "--voice", voice, "--out", os.path.join(work, "demo.mp4"),
+            "--", prompt]
 
 
 def _spawn(cmd, log):

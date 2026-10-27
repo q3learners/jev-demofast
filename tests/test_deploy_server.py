@@ -35,12 +35,13 @@ def test_a_public_site_is_accepted():
 
 def test_a_prompt_is_required_and_kept_short():
     assert server.check_prompt("") and server.check_prompt("x" * 501)
+    assert server.check_prompt("--index=/etc/passwd") and server.check_prompt("  -x")  # never read as an option
     assert server.check_prompt("Show my investors how easy it is to find running shoes") is None
 
 
-def test_the_demo_command_passes_the_prompt_as_one_argument(tmp_path):
+def test_the_demo_command_passes_the_prompt_as_one_argument_never_an_option(tmp_path):
     cmd = server.command("Show it; rm -rf /", "https://shop.test/", "apollo", str(tmp_path / "r1"))
-    assert cmd[:3] == ["jev-demofast", "demo", "Show it; rm -rf /"]
+    assert cmd[:2] == ["jev-demofast", "demo"] and cmd[-2:] == ["--", "Show it; rm -rf /"]
     assert cmd[cmd.index("--url") + 1] == "https://shop.test/" and "--fresh" in cmd
     assert cmd[cmd.index("--voice") + 1] == "apollo" and cmd[cmd.index("--out") + 1].endswith("r1/demo.mp4")
 
