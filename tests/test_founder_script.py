@@ -290,3 +290,14 @@ def test_a_reply_with_thinking_and_prose_still_gives_the_script_and_shots(tmp_pa
     cf = Writer("<think>plan the demo {first}</think>\nHere's the plan:\n```json\n" + body + "\n```\nHope it helps.")
     story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
     assert (tmp_path / "story.txt").read_text() == "Watch this.\n"
+
+
+def test_the_founder_never_narrates_the_route_or_invents_how_the_site_behaves():
+    """Amazon: "We open on Amazon's home page... From there we go straight to..." and "the page refreshes constantly"."""
+    assert "we open on" in story.SYSTEM.lower() and "refreshes" in story.SYSTEM.lower()
+    assert '"items": true' in story.SYSTEM
+
+
+def test_browsing_is_an_items_shot_not_a_task():
+    """Amazon: "look at hot items sold today" became a task; the goal loop had nothing to aim at and ran out of steps."""
+    assert "is not a task" in story.SYSTEM and "specific" in story.SYSTEM

@@ -14,6 +14,7 @@ from .jev_drive import click_on_camera, drive_goal
 from .menus import LEFT_SITE
 from .popups import clear_popups, covered, first_screen
 from .session import Session, origin
+from .showcase import showcase
 
 SCROLL_STEPS = 1  # about one screen: the viewer sees past the top banner (two per page made tutorq.ai 89 s long)
 TASK_STEPS = 12
@@ -65,6 +66,11 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
                 continue
             log(f"{ms():>6} ms  shot {i}: {shot['page']} ({rec.actions[-1]['do']})")
             _show(s, rec, i, shot["show"])
+            if shot.get("items"):  # the screen's point is what it lists (Amazon's hot new releases): name a few
+                before = len(rec.actions)
+                showcase(cf, s, rec, shot["show"], log)
+                for action in rec.actions[before:]:
+                    action.update(shot=i, show=shot["show"])
         result["verified"] = task_ok and not result["skipped"]
         if not task_ok:
             rec.unconfirmed(why)  # the task's own reason, on the task's last moment

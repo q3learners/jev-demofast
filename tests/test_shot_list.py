@@ -41,3 +41,10 @@ def test_the_same_page_twice_in_a_row_is_one_shot():
     shots = validate([{"page": "/k12", "show": "a"}, {"page": "/k12", "show": "b"}, {"page": "/sat", "show": "c"},
                       {"page": "/k12", "show": "d"}], MAP, log=lambda m: None)
     assert [s["page"] for s in shots] == ["/", "/k12", "/sat", "/k12"]
+
+
+def test_a_shot_can_ask_for_its_items_to_be_shown():
+    # Amazon: "look at hot items sold today" ended on the new-releases list without naming one item
+    shots = validate([{"page": "/k12", "show": "a", "items": True}, {"page": "/sat", "show": "b", "items": "yes"}],
+                     MAP, log=lambda m: None)
+    assert shots[1] == {"page": "/k12", "show": "a", "items": True} and "items" not in shots[2]

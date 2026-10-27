@@ -192,3 +192,16 @@ def test_a_skipped_page_never_disowns_a_verified_task(monkeypatch):
     result, actions = play([HOME, {"page": "/k12", "show": "K-12"}, {"task": "find", "show": ""}], slow={"/k12"})
     assert "outcome" not in actions[-1] and result["skipped"] == ["/k12"]
     assert play.rec.skipped == ["/k12"]  # kept with the recording, for the voice-over
+
+
+def test_a_shot_with_items_ends_on_them_outlined(monkeypatch):
+    seen = []
+
+    def showcase(cf, s, rec, goal, log=print, count=3):
+        seen.append(goal)
+        rec.commit({"do": "read", "target": "showcase", "items": ["Echo Dot $49"]})
+        return ["Echo Dot $49"]
+    monkeypatch.setattr(tour, "showcase", showcase)
+    _, actions = play([HOME, {"page": "/k12", "show": "what's hot today", "items": True}])
+    assert actions[-1]["do"] == "read" and actions[-1]["shot"] == 1 and actions[-1]["show"] == "what's hot today"
+    assert seen == ["what's hot today"]

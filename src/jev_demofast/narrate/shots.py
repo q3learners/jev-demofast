@@ -44,7 +44,7 @@ def validate(raw, index, log=print):
             continue
         if shot["page"] == (shots[-1] if shots else opening).get("page"):
             continue  # the same page again is the same screen (Allbirds' list named one listing three times)
-        shots.append({"page": shot["page"], "show": show})
+        shots.append({"page": shot["page"], "show": show, **({"items": True} if shot.get("items") is True else {})})
     task = shots[-1:] if shots and "task" in shots[-1] else []
     shots = [s for s in shots if "task" not in s][:MAX_SHOTS - len(task)] + task
     return [opening] + shots if shots else []

@@ -484,3 +484,9 @@ def test_the_narrowest_filter_is_applied_first():
     filters.apply_filters(Cf(picks), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None)
     clicked = [e for e in s.events if e.split(" (")[0] in ("Running Shoes", "Under $75", "$76 - $100")]
     assert clicked[0].startswith("Running Shoes")
+
+
+def test_a_page_with_no_items_gets_no_showcase_moment():
+    s, rec = Listing(), Rec()
+    assert showcase.showcase(Cf(UNDER_100, items=()), s, rec, "goal", log=lambda m: None) == []
+    assert rec.commits == []

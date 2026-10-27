@@ -20,10 +20,13 @@ and what they hold, and its listings with the filters on them.
 Reply with JSON only: {{"script": "...", "shots": [...]}}.
 
 shots are the screens of the demo, in order. The demo always opens on the home page, so start with
-{{"page": "/", "show": "..."}}, then up to {max_shots} more: {{"page": "<a key of pages>", "show": "..."}}, where
-show says in a few words why this screen is in the demo. Pick the pages that tell the brief's story, never pages the
-brief doesn't need. When the brief asks for something the site can do (find a product with a listing's filters,
-fill a form), end with {{"task": "<what to do, in one sentence>", "show": "..."}}; it counts as one of the {max_shots}.
+{{"page": "/", "show": "..."}}, then up to {max_shots} more: {{"page": "<a key of pages>", "show": "..."}} (or with "items": true), where
+show says in a few words why this screen is in the demo. Add "items": true to a page shot whose point is what it lists
+(products, plans, courses): the demo ends that shot by pointing out a few of them. Pick the pages that tell the brief's story, never pages the
+brief doesn't need. Only when the brief asks for something specific that a listing's filters or a form can do (men's
+running shoes under $150; book a table for two), end with {{"task": "<what to do, in one sentence>", "show": "..."}};
+it counts as one of the {max_shots}. A brief to look around or see what's popular is not a task: end on the page that
+lists it, with "items": true.
 
 script is the voice-over you will speak over those screens, in their order, as one flowing piece of plain text: no
 headings, no bullet points, no stage directions, no markdown. About 20 words per shot. The viewer will watch every
@@ -39,6 +42,9 @@ How you sound:
   never with names, counts or prices.
 - You may frame the product against the usual way of doing this ("no hunting through tabs"), but never state a fact
   about a named competitor. Ignore cart counts, banners and shipping notices.
+- Never narrate the route: no "we open on the home page", "from there we go to", "next we head over". Say what the
+  screen means to the viewer.
+- Never claim how the site behaves (it refreshes constantly, updates live, loads instantly) unless what we know says so.
 - Never say "AI", "automation", "agent", "click", "hover", "select", or "segment". Never introduce yourself by name.
 
 To hear the register (an unrelated product; never reuse its words): "{sample}"

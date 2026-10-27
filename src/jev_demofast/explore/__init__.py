@@ -17,7 +17,12 @@ from .listing import read_listing
 from .menus import VISIBLE_LINKS_JS, discover_menus
 from .templates import pick_examples, templates
 
-HEADINGS_JS = r"""[...document.querySelectorAll('h1,h2,h3')].filter(h => h.checkVisibility())
+# Visible to a person, not only to a screen reader: Amazon's only "headings" were its hidden "Skip to" and "Keyboard
+# shortcuts" labels (a 1 px box, or placed off the page's side), and the founder's script had nothing true to say.
+HEADINGS_JS = r"""[...document.querySelectorAll('h1,h2,h3')].filter(h => {
+    if (!h.checkVisibility()) return false;
+    const r = h.getBoundingClientRect();
+    return r.width > 2 && r.height > 2 && r.right > 0 && r.left < document.documentElement.clientWidth; })
   .map(h => h.innerText.replace(/\s+/g, ' ').trim()).filter(t => t && t.length < 120).slice(0, 10)"""
 EXAMPLES_PER_ROUTE = 2
 LINKS_PER_ROUTE = 80  # as the source-code map caps them
