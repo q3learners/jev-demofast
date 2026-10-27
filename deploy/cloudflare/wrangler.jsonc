@@ -31,8 +31,8 @@
   "vars": {
     "JDF_LLM_PROVIDER": "nebius",
     // Cloudflare Access (Zero Trust → Access → Applications): the team domain and the application's audience tag.
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": ""
+    "ACCESS_TEAM_DOMAIN": "vpodugu.cloudflareaccess.com",
+    "ACCESS_AUD": "bba2d62a46d38d356570930499cbab02608fcc4d00650dce9bf4ccac4d525dd6"
   }
   // Secrets (wrangler secret put): CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN, JEV_TOKEN, NEBIUS_API_KEY
 }
