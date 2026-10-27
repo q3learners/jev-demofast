@@ -473,3 +473,14 @@ def test_the_results_are_checked_with_the_filter_panel_closed(monkeypatch, tmp_p
                         lambda cf, goal, s, expected: seen.append(s.panel) or real(cf, goal, s, expected))
     run(monkeypatch, tmp_path, Cf(UNDER_100), listing=StickyPanel)
     assert seen and seen[-1] is False
+
+
+def test_the_narrowest_filter_is_applied_first():
+    """Allbirds bestsellers: "Under $75" went first, after which "Running Shoes" had no results and greyed out. The
+    group with one pick (what the shopper wants) goes before the group with several (the price bands)."""
+    picks = {"checks": [{"group": "Price", "value": "Under $75"}, {"group": "Price", "value": "$76 - $100"},
+                        {"group": "Product Type", "value": "Running Shoes"}], "ranges": [], "sort": None}
+    s = Listing()
+    filters.apply_filters(Cf(picks), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None)
+    clicked = [e for e in s.events if e.split(" (")[0] in ("Running Shoes", "Under $75", "$76 - $100")]
+    assert clicked[0].startswith("Running Shoes")

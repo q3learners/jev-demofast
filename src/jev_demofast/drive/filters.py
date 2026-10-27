@@ -1,6 +1,7 @@
 """Filters on an explored listing, applied the way a person would on camera: open the filter's panel if it's closed,
 tick the values the goal calls for, fill a price box. The map says which groups and values exist, so the language
 model only chooses among them; anything it invents is dropped."""
+from collections import Counter
 import re
 import time
 from urllib.parse import parse_qsl, urlparse
@@ -114,7 +115,10 @@ def apply_filters(cf, s, rec, goal, entry, log=print, unavailable=None):
     choices = choose_filters(cf, goal, entry.get("filters", []), entry.get("sort"))
     by_group = {f["group"]: f for f in entry.get("filters", [])}
     expected, settled = [], False  # settled: a value was just confirmed disabled, so the listing isn't reloading
-    for c in choices["checks"]:
+    picks = Counter(c["group"] for c in choices["checks"])
+    # The narrowest group first: one pick (Running Shoes) before several (four price bands). Allbirds' bestsellers
+    # with "Under $75" ticked first had no running shoes left, so the shopper's own choice greyed out.
+    for c in sorted(choices["checks"], key=lambda c: picks[c["group"]]):
         clear_popups(cf, s, log)  # filtering takes 10-20 s: a timed pop-up can land between filters
         e, disabled = _settled_find(s, c["value"], looks=SETTLED_LOOKS if settled else RELOAD_LOOKS)
         if disabled:  # known from the page: no panel or heading clicked looking for it
