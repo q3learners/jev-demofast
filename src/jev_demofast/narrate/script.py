@@ -1,5 +1,5 @@
-"""The voice-over from a recorded run: one line per segment. With the founder's script (story.txt, written before
-recording) it is fitted over the segments in the founder's words; without one, it is written from the screens.
+"""The voice-over from a recorded run. With the founder's script (story.txt, written before recording) it becomes one
+continuous voice-over over the recording (fit.py); without one, one line per segment is written from the screens.
 
 Output is plain "<id> | <label> | <text>" lines (models kept breaking JSON on quote marks in spoken text).
 The line count is enforced by segment id, and the narrator only sees what was on screen.
@@ -46,37 +46,6 @@ Good (human, short): "...drop in my password, and sign in." "So this is the cata
 with its own tutor." "Forks, commits and pull requests are the real signal; stars alone can be bought."
 Label: 2-4 words naming the segment."""
 
-FIT = """You are the founder of this product. Before the demo was recorded you wrote its voice-over (founder_script). The
-recording is done; you get its segments in order. Your job now is only to lay your script over the video: which of
-your sentences is spoken over which segment.
-
-Reply with plain text only, no JSON and no markdown: exactly one line per segment, in order, each formatted as
-<segment id> | <label> | <what you say>
-Use every given segment id exactly once, and nothing else.
-
-- Every line comes from founder_script: one of your sentences, trimmed to fit, in their order. Don't describe what the
-  segment shows; the viewer sees it.
-- Match sentences to segments by what they talk about: the first segment (do: open) gets your opening, the promise;
-  a segment that opens a menu gets your sentence about that menu; a filter segment gets your sentence about that
-  filter; the results segment (do: read) gets the results and the payoff. A segment none of your sentences is about
-  (opening a panel, say) gets a few words that carry the previous thought on.
-- Split a sentence only at a natural pause (a comma, "and", "so"), never in the middle of a phrase; every line reads
-  as something said in one breath, with a subject and a verb.
-- Cut what the recording never shows: a feature the demo didn't use (a sort, a tab) isn't mentioned.
-- Change your words only where the recording proves the script wrong, and then say what really happened:
-  - a filter segment's target is what was really chosen: if your sentence names another value ("under $150" when the
-    target is "Price: $126 - $150"), say the target's value instead;
-  - unavailable lists filter values the site greyed out (nothing there right now): say it the way a person would, in
-    a few words, then carry on with what was chosen;
-  - the results segment (do: read) lands the payoff in one spoken sentence that names two or three of its items with
-    their prices, never a bare list of names;
-  - an outcome that says "not confirmed": say plainly it didn't get there, never describe a success;
-  - names, counts and prices come from target and items, never from your script.
-- No line over {cap} words, and the whole script under {budget} words.
-
-Bad, never like this (captions of the screen): "Hovering Men reveals the Active category." "Clicking Active loads the
-collection." "Select the $126 to $150 price band." "Filters expand, revealing size, color and price."
-Label: 2-4 words naming the segment."""
 
 LINE_CAP = 26           # words per line
 WORDS_PER_SEGMENT = 17  # the whole script's budget, per segment: a founder's spoken sentence, about 6 s of speech
@@ -97,9 +66,6 @@ def too_long(by_id, ids):
 
 
 NARRATOR_FIELDS = {"do", "target", "chose", "items", "url", "screen_title", "screen_text", "outcome", "unavailable"}
-# Fitting the founder's script, the narrator gets the facts but not the page text: given the text, it described the
-# screen again instead of keeping the script.
-FIT_FIELDS = {"do", "target", "items", "screen_title", "outcome", "unavailable"}
 LINE = re.compile(r"^\W*(\d\d)\W*\|\s*(.*?)\s*\|\s*(.+?)\s*$")
 
 
@@ -119,18 +85,14 @@ def write(cf, run_dir, product="", attempts=3, log=print):
     ids = [a["segment"] for a in segs]
     goal = re.sub(r"\{\{\w+\}\}", "(secret)", data["goal"])
     founder = os.path.join(run_dir, "story.txt")
-    if os.path.exists(founder):  # the founder's script, written before recording: fit it over what was recorded
+    if os.path.exists(founder):  # the founder's script, written before recording: one voice-over over the recording
+        from . import fit
         with open(founder) as f:
-            context = {"goal": goal, "founder_script": f.read().strip(),
-                       "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in FIT_FIELDS}}
-                                    for a in segs]}
-        system = FIT
-    else:
-        context = {"goal": goal, "product": product,
-                   "note": "The screen_text is what the viewer sees; quote it, don't invent features.",
-                   "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in NARRATOR_FIELDS}}
-                                for a in segs]}
-        system = SYSTEM
+            return fit.write(cf, run_dir, goal, segs, f.read().strip(), log=log)
+    context = {"goal": goal, "product": product,
+               "note": "The screen_text is what the viewer sees; quote it, don't invent features.",
+               "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in NARRATOR_FIELDS}} for a in segs]}
+    system = SYSTEM
     system = system.format(cap=LINE_CAP, budget=word_budget(len(ids)))
     best = None
     for attempt in range(attempts):

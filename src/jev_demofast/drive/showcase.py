@@ -8,9 +8,10 @@ from .plan import extract
 from .session import StalePage
 
 WHAT = "the items this page lists that the goal is about, each with its price"
-# A filter panel's own close control, for panels that ignore Escape (Allbirds' "Collapse filters"). Closing, never
-# applying or clearing: the filters are already applied.
-CLOSE_PANEL = re.compile(r"^(close|collapse|hide)( the)? filters?\b|^close$", re.I)
+# A filter panel's own close control, for panels that ignore Escape. Closing, never applying or clearing: the filters
+# are already applied. Allbirds' is one toggle labelled "Filter Collapse filters (20 products)" whether open or not.
+CLOSE_PANEL = re.compile(r"\b(close|collapse|hide)( the)? filters?\b|^close$", re.I)
+OPTION = ("checkbox", "radio", "switch")  # filter values on screen: the panel is open
 
 
 def _on_screen(s, item):
@@ -25,8 +26,9 @@ def showcase(cf, s, rec, goal, log=print, count=3):
         s.browser.call("Input.dispatchKeyEvent", type=kind, key="Escape", code="Escape", windowsVirtualKeyCode=27)
     s.wait_for_page()
     s.observe()
+    open_panel = any(e["role"] in OPTION for e in s.elements())  # a toggle clicked when closed would open it
     closer = next((e for e in s.elements() if e["role"] in ("button", "link") and CLOSE_PANEL.search(e["label"] or "")
-                   and not blocked(e["label"])), None)
+                   and not blocked(e["label"])), None) if open_panel else None
     if closer is not None:  # the panel ignored Escape: close it with its own control, so the results are on screen
         try:
             s.act(closer, "click")

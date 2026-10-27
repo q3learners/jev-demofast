@@ -400,8 +400,7 @@ def test_the_narrator_names_only_the_items_outlined_on_screen():
 def test_the_video_never_opens_on_a_popup(monkeypatch, tmp_path):
     """Cloud: the first frame was Allbirds' "Unlock 10% Off" pop-up. Pop-ups are cleared before the opening frame."""
     events = []
-    monkeypatch.setattr(jev_drive.time, "sleep", lambda s: None)
-    monkeypatch.setattr(jev_drive, "clear_popups", lambda cf, s, log=print: events.append("clear"))
+    monkeypatch.setattr(jev_drive, "first_screen", lambda cf, s, log=print: events.append("clear"))
 
     class Watched(Listing):
         @property
@@ -419,3 +418,45 @@ def test_the_video_never_opens_on_a_popup(monkeypatch, tmp_path):
             return B()
     run(monkeypatch, tmp_path, Cf(UNDER_100), listing=Watched)
     assert events[0] == "clear"
+
+
+def test_a_popup_landing_as_the_opening_frame_is_taken_is_cleared_and_the_frame_retaken(monkeypatch, tmp_path):
+    seen = {"covered": 0, "cleared": 0}
+
+    def covered(s):
+        seen["covered"] += 1
+        return seen["covered"] == 1  # covered right after the first opening frame, then gone
+    monkeypatch.setattr(jev_drive, "covered", covered)
+    monkeypatch.setattr(jev_drive, "clear_popups", lambda cf, s, log=print: seen.__setitem__("cleared", seen["cleared"] + 1))
+    run(monkeypatch, tmp_path, Cf(UNDER_100))
+    frames = json.loads((tmp_path / "frames.json").read_text())
+    assert seen["cleared"] >= 1 and sum(f["segment"] == "00" for f in frames) == 1  # the covered frame was discarded
+
+
+class Toggle(Listing):
+    """Allbirds: one button opens and closes the panel, labelled "Filter Collapse filters (20 products)" either way;
+    the panel ignores Escape."""
+    def observe(self):
+        acts = [{"kind": "click", "node": 9, "id": "e9", "role": "button", "label": "Filter Collapse filters (20 products)"}]
+        if self.panel:
+            acts.append({"kind": "click", "node": 13, "id": "e13", "role": "checkbox", "label": "Running Shoes (12)"})
+        acts += [{"kind": "click", "node": 20 + n, "id": f"p{n}", "role": "link", "label": f"{name} {price}"}
+                 for n, (name, price) in enumerate(SHOES)]
+        self.page = {"url": "https://shop.test/collections/mens", "title": "Men's shoes", "scroll": 0, "actions": acts,
+                     "text": "Men's shoes " + " ".join(f"{a} {b}" for a, b in SHOES)}
+        return self.page
+
+    def act(self, e, kind, text=None):
+        self.events.append(e["label"])
+        if e["node"] == 9:
+            self.panel = not self.panel
+
+
+def test_the_showcase_closes_a_toggle_panel_only_while_it_is_open():
+    s = Toggle()
+    s.panel = True
+    showcase.showcase(Cf(UNDER_100), s, Rec(), "goal", log=lambda m: None)
+    assert s.events == ["Filter Collapse filters (20 products)"] and not s.panel
+    closed = Toggle()  # already closed: clicking the toggle would open it over the results
+    showcase.showcase(Cf(UNDER_100), closed, Rec(), "goal", log=lambda m: None)
+    assert closed.events == [] and not closed.panel

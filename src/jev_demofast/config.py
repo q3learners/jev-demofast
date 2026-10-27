@@ -26,6 +26,10 @@ class Settings:
     script_extra: dict = field(default_factory=lambda: {"reasoning_effort": "low"})
     embed_model: str = "@cf/baai/bge-base-en-v1.5"
     tts_model: str = "@cf/deepgram/aura-2-en"
+    # ElevenLabs narrates in one take when its key is set (narrate/eleven.py). multilingual_v2 measured 2.8 s for a
+    # 20 s voice-over; eleven_v3 is more expressive but took 6.8 s.
+    eleven_key: str = ""
+    eleven_model: str = "eleven_multilingual_v2"
     cdp_url: str = "http://127.0.0.1:9333"
     # Where the language-model calls (route plans, page reading, scripts) go. Jev, voice and embeddings stay on
     # Cloudflare whichever provider is chosen. Empty means Cloudflare Workers AI.
@@ -82,7 +86,8 @@ def load(require_cloudflare=True) -> Settings:
         raise ConfigError("Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (Workers AI). "
                           "Jev also needs AI Gateway credits on that account.")
     overrides = {}
-    for name in ("jev_model", "check_model", "plan_model", "read_model", "script_model", "embed_model", "tts_model"):
+    for name in ("jev_model", "check_model", "plan_model", "read_model", "script_model", "embed_model", "tts_model",
+                 "eleven_model"):
         value = os.environ.get(f"JDF_{name.upper()}")
         if value:
             overrides[name] = value
@@ -92,6 +97,7 @@ def load(require_cloudflare=True) -> Settings:
             overrides[name] = json.loads(os.environ[f"JDF_{name.upper()}"])
     overrides.update(_llm_provider(overrides))
     settings = Settings(account_id=account, api_token=token, jev_token=os.environ.get("JEV_TOKEN") or token,
+                        eleven_key=os.environ.get("ELEVENLABS_API_KEY", ""),
                         cdp_url=os.environ.get("BU_CDP_URL", "http://127.0.0.1:9333"), **overrides)
     if not settings.llm_url:  # Cloudflare Workers AI's OpenAI-compatible endpoint
         settings = replace(settings, llm_url=f"{settings.base}/v1/chat/completions", llm_token=token)

@@ -2,7 +2,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def no_opening_wait(monkeypatch):
-    """Demos wait 3 s for a first-visit pop-up before their opening frame; tests have no pop-up timers."""
-    from jev_demofast.drive import jev_drive
-    monkeypatch.setattr(jev_drive, "OPENING_SETTLE_S", 0)
+def no_first_popup_wait(monkeypatch):
+    """Demos watch for a first-visit pop-up for up to 5 s before their opening frame; tests have no pop-up timers."""
+    from jev_demofast.drive import popups
+    monkeypatch.setattr(popups, "FIRST_POPUP_WAIT_S", 0)

@@ -7,7 +7,7 @@ import pytest
 from jev_demofast import cli
 from jev_demofast import explore as explore_mod
 from jev_demofast.drive import jev_drive
-from jev_demofast.narrate import script, story
+from jev_demofast.narrate import fit, script, story
 
 from test_drive_filters_showcase import MAP, UNDER_100, Cf, Listing
 
@@ -74,12 +74,12 @@ def test_narration_fits_the_founders_script_over_the_segments(tmp_path):
                         "unavailable": ["Price: Under $75"]},
                        {"segment": "02", "do": "read", "target": "showcase", "items": ["Dasher NZ $140"]}])
     (tmp_path / "story.txt").write_text("Finding a running shoe should take seconds. Our filters get you there.")
-    cf = Writer("00 | Open | Finding a running shoe should take seconds.\n01 | Price | Nothing under $75 today, so "
-                "we go up to $150.\n02 | Results | And there's the Dasher NZ at $140.")
+    cf = Writer("[00] Finding a running shoe should take seconds. [01] Nothing under $75 today, so we go up to $150. "
+                "[02] And there's the Dasher NZ at $140.")
     lines = script.read_lines(script.write(cf, str(tmp_path), log=lambda m: None))
     assert lines[0] == "Finding a running shoe should take seconds." and len(lines) == 3
     call = cf.calls[0]
-    assert call["system"] == script.FIT.format(cap=script.LINE_CAP, budget=script.word_budget(3))
+    assert call["system"] == fit.SYSTEM.format(budget=fit.budget(3))
     assert call["user"]["founder_script"].startswith("Finding a running shoe")
     assert call["user"]["segments"][1]["unavailable"] == ["Price: Under $75"]  # the truth pass sees what was greyed out
     assert "screen_text" not in call["user"]["segments"][0]  # given page text, it described the screen again
@@ -95,7 +95,7 @@ def test_without_a_founders_script_the_narration_is_written_as_before(tmp_path):
 def test_a_founders_sentence_fits_the_word_budget():
     """At 11 words a segment the model wrote captions; a spoken founder sentence needs more room."""
     assert script.WORDS_PER_SEGMENT >= 16 and script.LINE_CAP >= 24
-    assert "2-6 words" not in script.SYSTEM and "2-6 words" not in script.FIT
+    assert "2-6 words" not in script.SYSTEM and "2-6 words" not in fit.SYSTEM
 
 
 def test_filter_values_the_site_disabled_reach_the_narrator_on_their_own_filter(monkeypatch, tmp_path):

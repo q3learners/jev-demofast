@@ -16,12 +16,11 @@ from .check import goal_reached
 from .filters import apply_filters, url_agrees
 from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, stop_if_dry_run
 from .menus import LEFT_SITE, describe_menu, menu_options, open_menu
-from .popups import clear_popups
+from .popups import clear_popups, covered, first_screen
 from .showcase import showcase
 from .session import Session, StalePage, fingerprint
 
 CONFIDENT = 0.5
-OPENING_SETTLE_S = 3
 VALUES = """Fill ONE web form for the user's goal. Return JSON {"values": {"<field description>": "<text to type>"}} for
 the fields the goal gives values for, using the field descriptions exactly as listed. Omit fields the goal doesn't cover.
 A goal can span several forms (e.g. sign in, then invite someone): use the screen and what's already done to tell which
@@ -41,11 +40,14 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     explored, expected = "_site" in index, []  # an explored map: screenshot check, filters, a showcase ending
     why = "it ran out of steps"  # what the narration says if the goal isn't reached
     try:
-        # The opening frame is the product, never a marketing pop-up: first-visit pop-ups open a moment after the page
-        # loads (the cloud video opened on "Unlock 10% Off"), so wait for one and clear it before the first frame.
-        time.sleep(OPENING_SETTLE_S)
-        clear_popups(cf, s, log)
+        # The opening frame is the product, never a marketing pop-up ("Unlock 10% Off" opened two videos): watch for a
+        # first-visit pop-up and clear it, and retake the frame if one lands just as it's taken.
+        first_screen(cf, s, log)
         rec.snap(1.5)
+        if covered(s):
+            clear_popups(cf, s, log)
+            rec.discard()
+            rec.snap(1.5)
         rec.commit({"do": "open"}, s.observe())
         while decisions < max_steps:
             decisions += 1

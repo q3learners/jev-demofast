@@ -120,14 +120,19 @@ def cmd_run(a, cf=None):
 
 
 def cmd_narrate(a, cf=None):
-    """Script → voice → camera-follow → narrated MP4, from a run recorded with page maps."""
+    """Script → voice → narrated MP4. With an ElevenLabs voice and the founder's voice-over: one take, and the video
+    follows the voice. Otherwise one clip per line, with camera-follow on runs recorded with page maps."""
     cf = cf or _cf(a)
-    from .narrate import focus, script, voice
-    from .render.assemble import assemble
+    from .narrate import eleven, focus, script, voice
+    from .render import assemble as assemble_mod
     path = script.write(cf, a.work, product=a.product)
-    clips = voice.generate(cf, path, os.path.join(a.work, "voice"), speaker=a.voice, speed=a.voice_speed)
+    voice_dir = os.path.join(a.work, "voice")
+    if eleven.speaks(cf.s, a.voice) and os.path.exists(os.path.join(a.work, "voiceover.txt")):
+        voice.one_take(eleven.ElevenLabs(cf.s.eleven_key, cf.s.eleven_model), a.work, voice_dir, a.voice)
+        return assemble_mod.assemble(a.work, a.out, take_dir=voice_dir, gif=a.gif, music=getattr(a, "music", None))
+    clips = voice.generate(cf, path, voice_dir, speaker=a.voice, speed=a.voice_speed)
     focused = focus.follow(cf, a.work, path, clips, os.path.join(a.work, "focused"))
-    return assemble(focused, a.out, clips_dir=clips, gif=a.gif, music=getattr(a, "music", None))
+    return assemble_mod.assemble(focused, a.out, clips_dir=clips, gif=a.gif, music=getattr(a, "music", None))
 
 
 def cmd_render(a):
@@ -229,7 +234,8 @@ def main(argv=None):
     d.add_argument("--out", default="demo.mp4")
     d.add_argument("--work", help="folder for frames (default: <out>.run)")
     d.add_argument("--gif", action="store_true")
-    d.add_argument("--voice", help="narrate with this Aura-2 voice, e.g. apollo or thalia")
+    d.add_argument("--voice", help="narrate with this voice: chris, eric, will, sarah or jessica (ElevenLabs, one take; "
+                                   "needs ELEVENLABS_API_KEY), or a Deepgram Aura-2 voice such as apollo or thalia")
     d.add_argument("--voice-speed", type=float, default=1.0, help="speak faster or slower, same pitch (e.g. 1.2)")
     d.add_argument("--product", default="", help="one line about the product, for narration")
     d.add_argument("--music", metavar="FILE", help="background music (a track you have the rights to); ducked under the voice")
