@@ -87,8 +87,9 @@ def cmd_index(a):
 
 
 def cmd_explore(a):
+    cf = _cf(a)  # first: browser-harness reads which Chrome to use when it loads, and explore loads it
     from . import explore
-    found = explore.explore(a.url, out=a.out, max_pages=a.pages, max_minutes=a.minutes, cf=_cf(a))
+    found = explore.explore(a.url, out=a.out, max_pages=a.pages, max_minutes=a.minutes, cf=cf)
     site = found["_site"]
     if site["blocked"]:
         raise SystemExit(f"blocked: {site['blocked']} (the site refuses automated browsers; use your own product or "
