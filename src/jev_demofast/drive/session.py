@@ -38,10 +38,10 @@ def site_cookies(cookies, host):
 
 
 class Session:
-    def __init__(self, url, fresh=False):
+    def __init__(self, url, fresh=False, isolated=False):
         self.start_url = url
         self.host = urlparse(url).hostname
-        self.browser = Browser(url)
+        self.browser = Browser(url, isolated=isolated)
         if fresh:  # start logged out: clear this site's cookies and storage (isolated profile only)
             self.clear_site(url)
             self.browser.call("Page.navigate", url=url)
@@ -84,6 +84,15 @@ class Session:
         element = self.refind(element)
         self.arm()
         self.browser.act(element["actions"][kind], self.page, text=text)
+
+    def hover(self, element):
+        """Move the mouse over an element (menus that open on hover)."""
+        r = self.browser.evaluate(f"(() => {{ const e=window.__jevFast?.nodes.get({element['node']}); if (!e?.isConnected) "
+                                  "return null; const r=e.getBoundingClientRect(); "
+                                  "return {x: r.x, y: r.y, w: r.width, h: r.height}; })()")
+        if not r:
+            raise StalePage("The element to hover is gone. Observe again.")
+        self.browser.call("Input.dispatchMouseEvent", type="mouseMoved", x=r["x"] + r["w"] / 2, y=r["y"] + r["h"] / 2)
 
     def arm(self):
         """Start watching the page for changes, so wait_for_page() sees what the next action does."""

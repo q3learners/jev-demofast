@@ -86,6 +86,18 @@ def cmd_index(a):
     print(f"{len(idx)} routes, {sum(len(r['links']) for r in idx.values())} links → {a.out}")
 
 
+def cmd_explore(a):
+    from . import explore
+    found = explore.explore(a.url, out=a.out, max_pages=a.pages, max_minutes=a.minutes, cf=_cf(a))
+    site = found["_site"]
+    if site["blocked"]:
+        raise SystemExit(f"blocked: {site['blocked']} (the site refuses automated browsers; use your own product or "
+                         "staging, where you can allow the tool)")
+    routes = {k: v for k, v in found.items() if not k.startswith("_")}
+    print(f"{len(routes)} routes, {sum(v.get('kind') == 'listing' for v in routes.values())} listings, "
+          f"{len(site['menus'])} menus → {a.out}")
+
+
 def cmd_run(a, cf=None):
     cf = cf or _cf(a)
     if a.index:
@@ -158,6 +170,13 @@ def main(argv=None):
     i.add_argument("--framework", default="nextjs")
     i.add_argument("--out", default="app-index.json")
     i.set_defaults(fn=cmd_index)
+
+    x = sub.add_parser("explore", help="map a live site from its URL (ahead of time; demos then use --index)")
+    x.add_argument("url")
+    x.add_argument("--out", default="site-map.json")
+    x.add_argument("--pages", type=int, default=40, help="most pages to visit")
+    x.add_argument("--minutes", type=float, default=5, help="most time to spend")
+    x.set_defaults(fn=cmd_explore)
 
     def run_args(sp):
         sp.add_argument("--url", required=True, help="where the demo starts (use staging)")

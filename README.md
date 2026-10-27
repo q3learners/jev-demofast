@@ -55,6 +55,21 @@ DEMO_PASSWORD='...' uv run jev-demofast demo "Reset my password for test@example
     --url https://staging.example.com --index app-index.json --fresh --out reset.mp4
 ```
 
+**A live site, with a map built by exploring it (no source code needed):**
+
+```bash
+uv run jev-demofast explore https://www.allbirds.com/ --out allbirds-map.json        # once, ahead of time: ~40 s
+uv run jev-demofast demo "Show how to find men's running shoes under \$150 on Allbirds" \
+    --url https://www.allbirds.com/ --index allbirds-map.json --fresh --out allbirds.mp4
+```
+
+`explore` browses the site once, the way a visitor would: it closes the newsletter pop-up, opens each menu (by hover
+or click), groups pages into templates (`/collections/:handle`), and reads each listing's filters (groups, values, and
+how they appear in the URL). It only navigates and reads: it never submits, signs up or types into a pop-up, and on a
+site that blocks automated browsers it stops with a message instead of trying to get around it. The demo then runs
+like a founder's walkthrough: the menu opens on camera, the filter panel opens, the filters are ticked, and it ends by
+highlighting two or three results. A filter the site has disabled ("no results") is reported, and the narration says so.
+
 With an index, **Jev drives on its own**; no LLM plans the route. Without one, an LLM plans the route once and Jev
 handles every step that needs judgment.
 
@@ -127,6 +142,14 @@ Details and the experiments behind each rule are in [docs/how-it-works.md](docs/
 - **Synonyms:** the plan said "Sign in" where the site said "Log in", and "Account recovery" where it said
   "Forgot password?". Jev matched them at 0.96–0.99; keyword matching alone got stuck.
 
+**Explored maps (26 October 2026), Allbirds, no source code:** `explore` took about 40 s (17 pages: the newsletter
+pop-up, the Men and Women menus, the `/collections/:handle` listing with its Size, Color, Price, Product Type and
+Material filters). "Show how to find men's running shoes under $150 on Allbirds" then verified **5 of 5** runs in
+21–42 s from that map: the Men menu opened on camera, the filter panel opened, Running Shoes and the $126–$150 band
+ticked, three shoes highlighted. The same sentence with "under $100" ends honestly unverified: Allbirds has no men's
+running shoes under $100, and the narration says so. Everlane mapped in about 60 s, Nike in 2.5 minutes (7 hover
+menus); Zara stopped in under a second ("Access Denied").
+
 ## Choose where the language models run
 
 Jev makes every click decision, and the voice is Deepgram Aura-2; both run on Cloudflare. The language-model steps
@@ -189,6 +212,8 @@ browser-harness telemetry and update checks are off by default (`BH_TELEMETRY=0`
   pass or fail a test.
 - Blind spots inherited from the browser layer: iframes, shadow DOM, file uploads, pop-up windows, and nested scroll
   areas. Sites protected by captchas will block it.
+- `explore` (October 2026) maps menus and listing filters; product pages, logins and checkout come next. On Gymshark it
+  found no menus, Everlane's menus came out shallow, and Nike's listing filters (links, not checkboxes) aren't read yet.
 - Jev is a paid, closed model. The decision layer is small (`cloudflare.py`), so other backends can be added.
 
 ## Contributing

@@ -30,6 +30,8 @@ def route_for(path, index):
     if path in index:
         return path
     for r in index:
+        if r.startswith("_"):  # site-wide records (an explored map's "_site"), not routes
+            continue
         if re.match("^" + re.sub(r":[^/]+", "[^/]+", r.rstrip("/") or "/") + "$", path):
             return r
     return None
@@ -45,6 +47,8 @@ def summary(route, index, limit=6):
         parts.append("shows: " + "; ".join(t[:60] for t in e["texts"][:limit]))
     if e["fields"]:
         parts.append("fields: " + ", ".join(e["fields"][:limit]))
+    if e.get("filters"):
+        parts.append("filters: " + ", ".join(f["group"] for f in e["filters"][:4]))
     links = [l["label"][:28] for l in e["links"] if not l["to"].startswith(("{", "#"))][:limit + 2]
     if links:
         parts.append("links: " + ", ".join(links))

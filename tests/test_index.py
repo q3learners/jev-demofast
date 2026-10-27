@@ -49,3 +49,12 @@ def test_layout_links_apply_to_every_page_beneath_them():
         links = {(l["label"], l["to"]) for l in idx[route]["links"]}
         assert ("Settings", "/dashboard/settings") in links and ("Team", "/dashboard") in links
     assert not any(l["label"] == "Settings" for l in idx["/login"]["links"])  # not outside the layout's folder
+
+
+def test_route_for_ignores_site_records_and_summary_lists_filters():
+    idx = {"_site": {"menus": []}, "/collections/:handle": {
+        "links": [], "fields": [], "texts": ["Men's shoes"], "kind": "listing",
+        "filters": [{"group": "Product Type"}, {"group": "Price"}]}}
+    assert route_for("/_site", idx) is None
+    assert route_for("/collections/mens", idx) == "/collections/:handle"
+    assert "filters: Product Type, Price" in summary("/collections/:handle", idx)

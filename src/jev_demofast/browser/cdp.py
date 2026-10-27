@@ -23,9 +23,13 @@ class StalePage(ValueError):
 
 
 class Browser:
-    def __init__(self, url):
+    def __init__(self, url, isolated=False):
         ensure_daemon()
-        self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
+        # isolated: a fresh browser context (own cookies and storage), so exploring a site doesn't change what later
+        # demos see (a pop-up closed while exploring would never appear in a demo).
+        self.context = cdp("Target.createBrowserContext")["browserContextId"] if isolated else None
+        target = {"browserContextId": self.context} if self.context else {}
+        self.target = cdp("Target.createTarget", url="about:blank", background=True, **target)["targetId"]
         self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
         self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
         # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.
@@ -115,6 +119,9 @@ class Browser:
         if self.target:
             cdp("Target.closeTarget", targetId=self.target)
             self.target = None
+        if getattr(self, "context", None):
+            cdp("Target.disposeBrowserContext", browserContextId=self.context)
+            self.context = None
 
 
 def fingerprint(state):
