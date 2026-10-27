@@ -29,7 +29,10 @@ class Browser:
         # demos see (a pop-up closed while exploring would never appear in a demo).
         self.context = cdp("Target.createBrowserContext")["browserContextId"] if isolated else None
         target = {"browserContextId": self.context} if self.context else {}
-        self.target = cdp("Target.createTarget", url="about:blank", background=True, **target)["targetId"]
+        # In your Chrome the tab opens in the background, never taking over your window. Headless Chrome (the hosted
+        # service) has no one watching, and a background tab there took ~2 s per screenshot against ~0.1 s in front.
+        headless = "HeadlessChrome" in cdp("Browser.getVersion").get("userAgent", "")  # not in "product" any more
+        self.target = cdp("Target.createTarget", url="about:blank", background=not headless, **target)["targetId"]
         self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
         self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
         # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.
