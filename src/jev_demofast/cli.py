@@ -164,7 +164,7 @@ def cmd_demo(a):
     if a.voice:  # the founder's script comes first; the recording is narrated from it
         from .index import load as load_index
         from .narrate import story
-        story.write(cf, a.prompt, load_index(a.index), a.work)
+        story.write(cf, a.prompt, load_index(a.index), a.work, product=a.product)
     result = cmd_run(a, cf)
     if a.voice:
         cmd_narrate(a, cf)  # camera-follow uses page maps where the run has them (navigator); otherwise frames as shot

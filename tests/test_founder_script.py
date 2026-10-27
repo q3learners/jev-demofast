@@ -50,6 +50,14 @@ def test_the_founders_script_is_written_from_the_prompt_and_the_map(tmp_path):
     assert "link 79" not in sent and len(sent) < 4000  # what the map knows, not the whole map
 
 
+def test_the_brief_never_carries_a_secret_and_includes_the_product_line(tmp_path):
+    cf = Writer("Script.")
+    story.write(cf, "Sign in as {{EMAIL}} and show my team the reports", SITE, str(tmp_path), product="Acme Reports",
+                log=lambda m: None)
+    sent = cf.calls[0]["user"]
+    assert "{{EMAIL}}" not in sent["brief"] and "(secret)" in sent["brief"] and sent["product"] == "Acme Reports"
+
+
 def test_the_story_prompt_has_no_example_lines_about_shoes():
     """Nemotron copied example lines word for word ("ten tabs", "heavy lifting"): nothing it could copy into a shop."""
     for word in ("shoe", "filter", "price", "menu"):
@@ -61,7 +69,7 @@ def actions(tmp_path, segs):
 
 
 def test_narration_fits_the_founders_script_over_the_segments(tmp_path):
-    actions(tmp_path, [{"segment": "00", "do": "open"},
+    actions(tmp_path, [{"segment": "00", "do": "open", "screen_text": "Free shipping over $100 Skip to content"},
                        {"segment": "01", "do": "filter", "target": "Price: $126 - $150",
                         "unavailable": ["Price: Under $75"]},
                        {"segment": "02", "do": "read", "target": "showcase", "items": ["Dasher NZ $140"]}])
@@ -74,6 +82,7 @@ def test_narration_fits_the_founders_script_over_the_segments(tmp_path):
     assert call["system"] == script.FIT.format(cap=script.LINE_CAP, budget=script.word_budget(3))
     assert call["user"]["founder_script"].startswith("Finding a running shoe")
     assert call["user"]["segments"][1]["unavailable"] == ["Price: Under $75"]  # the truth pass sees what was greyed out
+    assert "screen_text" not in call["user"]["segments"][0]  # given page text, it described the screen again
 
 
 def test_without_a_founders_script_the_narration_is_written_as_before(tmp_path):
@@ -119,7 +128,7 @@ def demo(monkeypatch, tmp_path):
             json.dump(found, f)
         return found
     monkeypatch.setattr(explore_mod, "explore", explore)
-    monkeypatch.setattr(story, "write", lambda cf, prompt, index, work, log=print: seen["order"].append(
+    monkeypatch.setattr(story, "write", lambda cf, prompt, index, work, product="", log=print: seen["order"].append(
         ("story", prompt, sorted(index))) or "script")
 
     def run(a, cf=None):

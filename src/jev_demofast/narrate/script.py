@@ -55,8 +55,13 @@ Reply with plain text only, no JSON and no markdown: exactly one line per segmen
 Use every given segment id exactly once, and nothing else.
 
 - Every line comes from founder_script: one of your sentences, trimmed to fit, in their order. Don't describe what the
-  segment shows; the viewer sees it. When there are more segments than sentences, split a sentence only at a natural
-  pause (a comma, "and", "so"), never in the middle of a phrase; a line always reads as something said in one breath.
+  segment shows; the viewer sees it.
+- Match sentences to segments by what they talk about: the first segment (do: open) gets your opening, the promise;
+  a segment that opens a menu gets your sentence about that menu; a filter segment gets your sentence about that
+  filter; the results segment (do: read) gets the results and the payoff. A segment none of your sentences is about
+  (opening a panel, say) gets a few words that carry the previous thought on.
+- Split a sentence only at a natural pause (a comma, "and", "so"), never in the middle of a phrase; every line reads
+  as something said in one breath, with a subject and a verb.
 - Cut what the recording never shows: a feature the demo didn't use (a sort, a tab) isn't mentioned.
 - Change your words only where the recording proves the script wrong, and then say what really happened:
   - a filter segment's target is what was really chosen: if your sentence names another value ("under $150" when the

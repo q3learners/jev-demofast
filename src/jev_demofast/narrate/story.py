@@ -6,6 +6,7 @@ range."); a founder decides the story first and records to match it.
 """
 import json
 import os
+import re
 from urllib.parse import urlparse
 
 from ..index import summary
@@ -15,12 +16,11 @@ the brief says who will watch it and what they should come away believing. You g
 the product: its menus and what they hold, its listings and the filters on them, and what the home page says.
 
 Write the voice-over you will speak, as one flowing script in plain text: no headings, no bullet points, no stage
-directions, no markdown. 60-100 words: about one sentence for each moment of the demo (the promise, the home page, the
-menu, the listing, each filter, the results, the payoff). The viewer will watch every step on screen, so don't narrate the
+directions, no markdown. 60-100 words: about one sentence for each moment of the demo: the promise, said over the home page;
+the menu; the listing; each filter; the results and the payoff, together. The viewer will watch every step on screen, so don't narrate the
 route ("we open the menu, then choose..."); talk about the product while it happens: what's thoughtful about how it's
 organised, what each moment saves the shopper, and why that matters to this audience. Open on the promise or the
-problem in one breath, follow the order the demo will go (home, the menu, the listing, the filters, the results), and
-land the payoff. Then stop. Talk only about what the demo will show: the menu, the listing and the filters the brief
+problem in one breath, follow the order the demo will go, and land the payoff. Then stop. Talk only about what the demo will show: the menu, the listing and the filters the brief
 needs; no sorting, tabs or features it won't use.
 
 How you sound:
@@ -61,9 +61,10 @@ def context(index):
                         if not route.startswith("_") and route != "/" and not index[route].get("filters")}}
 
 
-def write(cf, prompt, index, work, log=print):
-    """Write the founder's script to <work>/story.txt and return it."""
-    asked = json.dumps({"brief": prompt, "what_we_know": context(index)})
+def write(cf, prompt, index, work, product="", log=print):
+    """Write the founder's script to <work>/story.txt and return it. Secrets in the prompt are masked."""
+    brief = re.sub(r"\{\{\w+\}\}", "(secret)", prompt)
+    asked = json.dumps({"brief": brief, "product": product, "what_we_know": context(index)})
     text = cf.chat(cf.s.script_model, SYSTEM.format(sample=SAMPLE), asked,
                    cf.s.script_extra).strip()
     os.makedirs(work, exist_ok=True)
