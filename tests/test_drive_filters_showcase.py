@@ -232,8 +232,9 @@ def test_the_panel_is_reopened_when_a_filter_click_collapses_it():
         "Running Shoes (12)", "Under $75 (3)", "$76 - $100 (9)"]
 
 
-def test_a_filter_value_the_site_disabled_is_reported_unavailable():
+def test_a_filter_value_the_site_disabled_is_reported_unavailable(monkeypatch):
     """Live: with Running Shoes ticked, Allbirds disables every price band under $126: say so, don't just skip."""
+    monkeypatch.setattr(filters.time, "sleep", lambda s: None)
     class Disabled(Listing):
         def __init__(self, *a, **k):
             super().__init__(*a, **k)
@@ -321,3 +322,100 @@ def test_a_value_disabled_only_while_the_listing_reloads_is_still_applied(monkey
     filters.apply_filters(Cf(picks), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None,
                           unavailable=unavailable)
     assert unavailable == [] and "Running Shoes (12)" in s.events
+
+
+def reloading_listing(looks, slow_looks, values=("Running Shoes",)):
+    """A listing whose options stay disabled for `slow_looks` looks while it reloads (the cloud is slower)."""
+    class Reloading(Listing):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.panel = True
+
+        @property
+        def browser(self):
+            inner = super().browser
+
+            class B:
+                def evaluate(self, js, **k):
+                    if "disabled" in js:
+                        return list(values) if looks["n"] < slow_looks else []
+                    return inner.evaluate(js)
+
+                def call(self, method, **params):
+                    return inner.call(method, **params)
+            return B()
+
+        def observe(self):
+            looks["n"] += 1
+            page = super().observe()
+            if looks["n"] < slow_looks:
+                page["actions"] = [a for a in page["actions"] if not a["label"].startswith("Running")]
+            return page
+    return Reloading()
+
+
+def test_a_slow_reload_in_the_cloud_doesnt_make_a_value_unavailable(monkeypatch):
+    """Cloud: the listing took longer to reload, and $126 - $150 was reported greyed out though it wasn't."""
+    monkeypatch.setattr(filters.time, "sleep", lambda s: None)
+    looks = {"n": 0}
+    picks = {"checks": [{"group": "Product Type", "value": "Running Shoes"}], "ranges": [], "sort": None}
+    s, unavailable = reloading_listing(looks, slow_looks=6), []
+    filters.apply_filters(Cf(picks), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None,
+                          unavailable=unavailable)
+    assert unavailable == [] and "Running Shoes (12)" in s.events
+
+
+def test_the_showcase_closes_a_filter_panel_that_ignores_escape():
+    """Cloud: Allbirds' panel stayed open over the results after Escape, so the video never showed them. Its own
+    "Collapse filters" control closes it."""
+    class Sticky(Listing):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.panel = True
+
+        def observe(self):
+            page = super().observe()
+            if self.panel:
+                page["actions"] += [{"kind": "click", "node": 40, "id": "e40", "role": "button", "label": "Collapse filters"},
+                                    {"kind": "click", "node": 41, "id": "e41", "role": "button", "label": "Apply filters"}]
+            return page
+
+        def act(self, e, kind, text=None):
+            super().act(e, kind, text)
+            if e["label"] == "Collapse filters":
+                self.panel = False
+    s, rec = Sticky(), Rec()
+    showcase.showcase(Cf(UNDER_100), s, rec, "goal", log=lambda m: None)
+    assert s.events[0] == "Collapse filters" and not s.panel and rec.snaps[-3:] == [20, 21, 22]
+
+
+def test_the_narrator_names_only_the_items_outlined_on_screen():
+    """Cloud: three Dasher NZs were outlined, but the narration named a Golf Dasher the viewer never saw."""
+    s, rec = Listing(), Rec()
+    cf = Cf(UNDER_100, items=("Tree Runner", "Dasher NZ", "Wool Runner", "Trail Runner", "Golf Dasher"))
+    showcase.showcase(cf, s, rec, "goal", log=lambda m: None)
+    assert rec.commits[-1]["items"] == ["Tree Runner", "Dasher NZ", "Wool Runner"]
+
+
+def test_the_video_never_opens_on_a_popup(monkeypatch, tmp_path):
+    """Cloud: the first frame was Allbirds' "Unlock 10% Off" pop-up. Pop-ups are cleared before the opening frame."""
+    events = []
+    monkeypatch.setattr(jev_drive.time, "sleep", lambda s: None)
+    monkeypatch.setattr(jev_drive, "clear_popups", lambda cf, s, log=print: events.append("clear"))
+
+    class Watched(Listing):
+        @property
+        def browser(self):
+            inner = super().browser
+
+            class B:
+                def evaluate(self, js, **k):
+                    return inner.evaluate(js)
+
+                def call(self, method, **params):
+                    if method == "Page.captureScreenshot":
+                        events.append("shot")
+                    return inner.call(method, **params)
+            return B()
+    run(monkeypatch, tmp_path, Cf(UNDER_100), listing=Watched)
+    assert events[0] == "clear"

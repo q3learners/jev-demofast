@@ -21,6 +21,7 @@ from .showcase import showcase
 from .session import Session, StalePage, fingerprint
 
 CONFIDENT = 0.5
+OPENING_SETTLE_S = 3
 VALUES = """Fill ONE web form for the user's goal. Return JSON {"values": {"<field description>": "<text to type>"}} for
 the fields the goal gives values for, using the field descriptions exactly as listed. Omit fields the goal doesn't cover.
 A goal can span several forms (e.g. sign in, then invite someone): use the screen and what's already done to tell which
@@ -40,8 +41,12 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     explored, expected = "_site" in index, []  # an explored map: screenshot check, filters, a showcase ending
     why = "it ran out of steps"  # what the narration says if the goal isn't reached
     try:
+        # The opening frame is the product, never a marketing pop-up: first-visit pop-ups open a moment after the page
+        # loads (the cloud video opened on "Unlock 10% Off"), so wait for one and clear it before the first frame.
+        time.sleep(OPENING_SETTLE_S)
+        clear_popups(cf, s, log)
         rec.snap(1.5)
-        rec.commit({"do": "open"}, s.page)
+        rec.commit({"do": "open"}, s.observe())
         while decisions < max_steps:
             decisions += 1
             clear_popups(cf, s, log)  # marketing pop-ups open on timers, on any screen

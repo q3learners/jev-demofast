@@ -91,9 +91,13 @@ def _disabled(s, value):
     return any(want and want <= words(label) for label in s.browser.evaluate(DISABLED_JS) or [])
 
 
-def _settled_find(s, value, looks=3, every_s=0.4):
+RELOAD_LOOKS, SETTLED_LOOKS = 8, 2  # up to ~3.5 s for a listing to reload (slower in the cloud), then quick looks
+
+
+def _settled_find(s, value, looks=RELOAD_LOOKS, every_s=0.5):
     """(control, disabled). Right after a filter click Shopify disables every option until the listing reloads, so a
-    value counts as disabled only if it stays disabled over a few looks."""
+    value counts as disabled only if it stays disabled over a few looks. In the cloud the reload took longer than 0.8 s
+    and a real value ($126 - $150) was reported greyed out."""
     for n in range(looks):
         e = _find(s, value, ("checkbox", "radio", "option", "switch"))
         if e is not None or not _disabled(s, value):
@@ -109,15 +113,17 @@ def apply_filters(cf, s, rec, goal, entry, log=print, unavailable=None):
     has disabled (no results with the other filters) are appended to `unavailable` as "<group>: <value>"."""
     choices = choose_filters(cf, goal, entry.get("filters", []), entry.get("sort"))
     by_group = {f["group"]: f for f in entry.get("filters", [])}
-    expected = []
+    expected, settled = [], False  # settled: a value was just confirmed disabled, so the listing isn't reloading
     for c in choices["checks"]:
         clear_popups(cf, s, log)  # filtering takes 10-20 s: a timed pop-up can land between filters
-        e, disabled = _settled_find(s, c["value"])
+        e, disabled = _settled_find(s, c["value"], looks=SETTLED_LOOKS if settled else RELOAD_LOOKS)
         if disabled:  # known from the page: no panel or heading clicked looking for it
             log(f"  filter {c['group']}: {c['value']!r} is unavailable (the site has no results for it here)")
             if unavailable is not None:
                 unavailable.append(f"{c['group']}: {c['value']}")
+            settled = True
             continue
+        settled = False
         # Each filter click may reload the listing with the panel collapsed again (Allbirds): reopen it when needed.
         if e is None and _find(s, c["group"], ("button", "link", "tab")) is None:
             panel = next((x for x in s.elements() if x["role"] in ("button", "link") and PANEL.search(x["label"])
