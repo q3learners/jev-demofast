@@ -27,7 +27,7 @@ def test_nebius_sends_language_model_calls_to_token_factory_with_nemotron(monkey
     s = load()
     assert s.llm_url == "https://api.tokenfactory.nebius.com/v1/chat/completions" and s.llm_token == "nb-key"
     assert s.plan_model == s.read_model == s.script_model == "nvidia/some-nemotron"
-    assert s.plan_extra == {} and s.script_extra == {}          # GLM's reasoning_effort isn't sent to Nebius
+    assert s.plan_extra == {} and "reasoning_effort" not in s.script_extra  # GLM's setting isn't sent to Nebius
     assert s.jev_model == "typesafe/jev" and s.jev_token == "cf-token"   # Jev stays on Cloudflare
     assert s.tts_model.startswith("@cf/")
 
@@ -37,6 +37,14 @@ def test_nebius_defaults_to_nemotron_ultra_without_thinking(monkeypatch):
     s = load()
     assert s.plan_model == s.read_model == s.script_model == "nvidia/Nemotron-3-Ultra-550b-a55b"
     assert s.llm_extra == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_nemotron_thinks_when_it_writes_the_founders_script(monkeypatch):
+    """Thinking off, Nemotron wrote captions; on, it keeps the founder's voice and the facts (a few seconds, once)."""
+    env(monkeypatch, JDF_LLM_PROVIDER="nebius", NEBIUS_API_KEY="nb-key")
+    assert load().script_extra == {"chat_template_kwargs": {"enable_thinking": True}}
+    env(monkeypatch, JDF_LLM_PROVIDER="nebius", NEBIUS_API_KEY="nb-key", JDF_SCRIPT_EXTRA='{"temperature": 0.2}')
+    assert load().script_extra == {"temperature": 0.2}
 
 
 def test_nebius_needs_its_key(monkeypatch):
@@ -67,7 +75,7 @@ def test_chat_posts_to_the_configured_provider(monkeypatch):
 def test_nebius_keeps_extras_the_user_set(monkeypatch):
     env(monkeypatch, JDF_LLM_PROVIDER="nebius", NEBIUS_API_KEY="nb-key", JDF_PLAN_EXTRA='{"temperature": 0.1}')
     s = load()
-    assert s.plan_extra == {"temperature": 0.1} and s.script_extra == {}
+    assert s.plan_extra == {"temperature": 0.1} and s.script_extra == {"chat_template_kwargs": {"enable_thinking": True}}
 
 
 def test_a_non_json_error_page_is_a_model_error_not_a_crash(monkeypatch):

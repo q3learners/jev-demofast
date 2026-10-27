@@ -58,10 +58,19 @@ DEMO_PASSWORD='...' uv run jev-demofast demo "Reset my password for test@example
 **A live site, with a map built by exploring it (no source code needed):**
 
 ```bash
-uv run jev-demofast explore https://www.allbirds.com/ --out allbirds-map.json        # once, ahead of time: ~40 s
-uv run jev-demofast demo "Show how to find men's running shoes under \$150 on Allbirds" \
-    --url https://www.allbirds.com/ --index allbirds-map.json --fresh --out allbirds.mp4
+uv run jev-demofast demo "Show my investors how easy it is to find men's running shoes under \$150 on our site" \
+    --url https://www.allbirds.com/ --fresh --voice apollo --out allbirds.mp4
 ```
+
+With no `--index`, `demo` explores the site first (about 40 s, once) and keeps the map in
+`~/.cache/jev-demofast/maps/<host>.json` for later demos; delete that file to explore again. `explore <url> --out map.json`
+does the same on its own.
+
+**The founder's script comes first.** Before anything is recorded, Nemotron reads the prompt (who the demo is for, and
+why) and what the map knows (menus, listings, filters and their values) and writes the voice-over a founder would give:
+the promise, why each moment matters, the payoff. It's printed and saved as `story.txt` in the run folder. After
+recording, it's laid over the video in the founder's words, and changed only where the recording proves it wrong: the
+value really chosen, a price band the site had greyed out, and the products and prices actually shown.
 
 `explore` browses the site once, the way a visitor would: it closes the newsletter pop-up, opens each menu (by hover
 or click), groups pages into templates (`/collections/:handle`), and reads each listing's filters (groups, values, and
@@ -74,9 +83,8 @@ With an index, **Jev drives on its own**; no LLM plans the route. Without one, a
 handles every step that needs judgment.
 
 **Narrated:** add `--voice apollo` (or a female voice such as `thalia`) for a Deepgram Aura-2 voice (about $0.03 per
-1,000 characters), with or without `--index`. `--voice-speed 1.2` speaks faster at the same pitch. The script is
-written from what was actually on screen and kept short (about 11 words per step), and on runs without an index the
-camera pans to whatever each line talks about. Add `--music track.mp3` for a background
+1,000 characters), with or without `--index`. `--voice-speed 1.2` speaks faster at the same pitch. With a map, the
+script is the founder's (above), about 17 words per step; the Allbirds demo above runs about a minute. Add `--music track.mp3` for a background
 bed: it plays alone for 2 s before the narrator starts and after they finish, loops to the video's length, and
 dips gently whenever the narrator speaks (the voice is also softened to sit inside it). Use a track
 you have the rights to (Pixabay Music and the YouTube Audio Library allow commercial use).

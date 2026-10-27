@@ -77,6 +77,7 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
                 unavailable = []
                 expected = apply_filters(cf, s, rec, goal, entry, log, unavailable=unavailable)
                 filled.add(path)
+                rec.note_unavailable(unavailable)
                 if expected is None:
                     log(f"GUARD: left {s.host}; stopped")
                     why = f"a click led away from {s.host}"

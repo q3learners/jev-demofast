@@ -94,6 +94,16 @@ class Recorder:
         if self.actions and "outcome" not in self.actions[-1]:
             self.actions[-1]["outcome"] = f"not confirmed: {why}"
 
+    def note_unavailable(self, values):
+        """Filter values the site had greyed out ("Price: Under $75"), each on the segment of its own filter (else the
+        last one), so the narrator says it over the right moment."""
+        for value in values:
+            group = value.split(":")[0]
+            mine = [a for a in self.actions if a.get("do") == "filter" and a.get("target", "").startswith(group + ":")]
+            target = (mine or self.actions[-1:] or [None])[-1]
+            if target is not None:
+                target.setdefault("unavailable", []).append(value)
+
     def discard(self):
         self.pending = []
 

@@ -46,7 +46,10 @@ class Settings:
 LLM_PROVIDERS = {
     "nebius": {"url": "https://api.tokenfactory.nebius.com/v1/chat/completions", "key": "NEBIUS_API_KEY",
                "model": "nvidia/Nemotron-3-Ultra-550b-a55b",
-               "extra": {"chat_template_kwargs": {"enable_thinking": False}}},
+               "extra": {"chat_template_kwargs": {"enable_thinking": False}},
+               # The founder's script: thinking off, Nemotron wrote captions of the screen; on, it keeps the voice and
+               # the facts. It runs twice per video, so the few seconds don't matter.
+               "script_extra": {"chat_template_kwargs": {"enable_thinking": True}}},
 }
 
 
@@ -65,7 +68,7 @@ def _llm_provider(overrides):
     model = os.environ.get(f"JDF_{name.upper()}_MODEL") or p["model"]
     # The Cloudflare defaults' extras (GLM's reasoning_effort) aren't sent elsewhere; JDF_PLAN_EXTRA etc. still are.
     chosen = {"llm_provider": name, "llm_url": p["url"], "llm_token": token, "llm_extra": p["extra"],
-              "plan_extra": overrides.get("plan_extra", {}), "script_extra": overrides.get("script_extra", {})}
+              "plan_extra": overrides.get("plan_extra", {}), "script_extra": overrides.get("script_extra", p.get("script_extra", {}))}
     for role in ("plan_model", "read_model", "script_model"):
         chosen[role] = overrides.get(role, model)
     return chosen

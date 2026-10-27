@@ -1,4 +1,5 @@
-"""A human-presenter voice-over script from a recorded run: one line per segment.
+"""The voice-over from a recorded run: one line per segment. With the founder's script (story.txt, written before
+recording) it is fitted over the segments in the founder's words; without one, it is written from the screens.
 
 Output is plain "<id> | <label> | <text>" lines (models kept breaking JSON on quote marks in spoken text).
 The line count is enforced by segment id, and the narrator only sees what was on screen.
@@ -34,7 +35,7 @@ How a real presenter sounds:
   - no line over {cap} words, and the whole script under {budget} words;
   - the opening line and the closing line: one short sentence each, about 12-18 words;
   - a new screen: one point worth noticing, about 8-16 words;
-  - quick steps (typing, submitting, opening a menu): a fragment of 2-6 words that continues the previous line;
+  - quick steps (typing, submitting, opening a menu): a short spoken line that continues the previous one;
   - a line that reads information: name the two or three most telling items, not all of them.
   Cut anything the viewer can already see for themselves.
 
@@ -45,8 +46,40 @@ Good (human, short): "...drop in my password, and sign in." "So this is the cata
 with its own tutor." "Forks, commits and pull requests are the real signal; stars alone can be bought."
 Label: 2-4 words naming the segment."""
 
-LINE_CAP = 20          # words per line
-WORDS_PER_SEGMENT = 11  # the whole script's budget, per segment: about 4-5 s of speech each
+FIT = """You are the founder of this product. Before the demo was recorded you wrote its voice-over (founder_script). The
+recording is done; you get its segments in order. Your job now is only to lay your script over the video: which of
+your sentences is spoken over which segment.
+
+Reply with plain text only, no JSON and no markdown: exactly one line per segment, in order, each formatted as
+<segment id> | <label> | <what you say>
+Use every given segment id exactly once, and nothing else.
+
+- Every line comes from founder_script: one of your sentences, trimmed to fit, in their order. Don't describe what the
+  segment shows; the viewer sees it.
+- Match sentences to segments by what they talk about: the first segment (do: open) gets your opening, the promise;
+  a segment that opens a menu gets your sentence about that menu; a filter segment gets your sentence about that
+  filter; the results segment (do: read) gets the results and the payoff. A segment none of your sentences is about
+  (opening a panel, say) gets a few words that carry the previous thought on.
+- Split a sentence only at a natural pause (a comma, "and", "so"), never in the middle of a phrase; every line reads
+  as something said in one breath, with a subject and a verb.
+- Cut what the recording never shows: a feature the demo didn't use (a sort, a tab) isn't mentioned.
+- Change your words only where the recording proves the script wrong, and then say what really happened:
+  - a filter segment's target is what was really chosen: if your sentence names another value ("under $150" when the
+    target is "Price: $126 - $150"), say the target's value instead;
+  - unavailable lists filter values the site greyed out (nothing there right now): say it the way a person would, in
+    a few words, then carry on with what was chosen;
+  - the results segment (do: read) lands the payoff in one spoken sentence that names two or three of its items with
+    their prices, never a bare list of names;
+  - an outcome that says "not confirmed": say plainly it didn't get there, never describe a success;
+  - names, counts and prices come from target and items, never from your script.
+- No line over {cap} words, and the whole script under {budget} words.
+
+Bad, never like this (captions of the screen): "Hovering Men reveals the Active category." "Clicking Active loads the
+collection." "Select the $126 to $150 price band." "Filters expand, revealing size, color and price."
+Label: 2-4 words naming the segment."""
+
+LINE_CAP = 26           # words per line
+WORDS_PER_SEGMENT = 17  # the whole script's budget, per segment: a founder's spoken sentence, about 6 s of speech
 
 
 def word_budget(segment_count):
@@ -63,7 +96,10 @@ def too_long(by_id, ids):
     return problems
 
 
-NARRATOR_FIELDS = {"do", "target", "chose", "items", "url", "screen_title", "screen_text", "outcome"}
+NARRATOR_FIELDS = {"do", "target", "chose", "items", "url", "screen_title", "screen_text", "outcome", "unavailable"}
+# Fitting the founder's script, the narrator gets the facts but not the page text: given the text, it described the
+# screen again instead of keeping the script.
+FIT_FIELDS = {"do", "target", "items", "screen_title", "outcome", "unavailable"}
 LINE = re.compile(r"^\W*(\d\d)\W*\|\s*(.*?)\s*\|\s*(.+?)\s*$")
 
 
@@ -81,10 +117,21 @@ def write(cf, run_dir, product="", attempts=3, log=print):
     data = json.load(open(os.path.join(run_dir, "actions.json")))
     segs = data["actions"]
     ids = [a["segment"] for a in segs]
-    context = {"goal": re.sub(r"\{\{\w+\}\}", "(secret)", data["goal"]), "product": product,
-               "note": "The screen_text is what the viewer sees; quote it, don't invent features.",
-               "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in NARRATOR_FIELDS}} for a in segs]}
-    system = SYSTEM.format(cap=LINE_CAP, budget=word_budget(len(ids)))
+    goal = re.sub(r"\{\{\w+\}\}", "(secret)", data["goal"])
+    founder = os.path.join(run_dir, "story.txt")
+    if os.path.exists(founder):  # the founder's script, written before recording: fit it over what was recorded
+        with open(founder) as f:
+            context = {"goal": goal, "founder_script": f.read().strip(),
+                       "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in FIT_FIELDS}}
+                                    for a in segs]}
+        system = FIT
+    else:
+        context = {"goal": goal, "product": product,
+                   "note": "The screen_text is what the viewer sees; quote it, don't invent features.",
+                   "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in NARRATOR_FIELDS}}
+                                for a in segs]}
+        system = SYSTEM
+    system = system.format(cap=LINE_CAP, budget=word_budget(len(ids)))
     best = None
     for attempt in range(attempts):
         by_id = parse_lines(cf.chat(cf.s.script_model, system, json.dumps(context), cf.s.script_extra))

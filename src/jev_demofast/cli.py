@@ -86,13 +86,21 @@ def cmd_index(a):
     print(f"{len(idx)} routes, {sum(len(r['links']) for r in idx.values())} links → {a.out}")
 
 
+MAPS = Path("~/.cache/jev-demofast/maps").expanduser()  # one explored map per site, reused by later demos
+
+
+def _blocked(site):
+    return SystemExit(f"blocked: {site['blocked']} (the site refuses automated browsers; use your own product or "
+                      "staging, where you can allow the tool)")
+
+
 def cmd_explore(a):
+    cf = _cf(a)  # first: browser-harness reads which Chrome to use when it loads, and explore loads it
     from . import explore
-    found = explore.explore(a.url, out=a.out, max_pages=a.pages, max_minutes=a.minutes, cf=_cf(a))
+    found = explore.explore(a.url, out=a.out, max_pages=a.pages, max_minutes=a.minutes, cf=cf)
     site = found["_site"]
     if site["blocked"]:
-        raise SystemExit(f"blocked: {site['blocked']} (the site refuses automated browsers; use your own product or "
-                         "staging, where you can allow the tool)")
+        raise _blocked(site)
     routes = {k: v for k, v in found.items() if not k.startswith("_")}
     print(f"{len(routes)} routes, {sum(v.get('kind') == 'listing' for v in routes.values())} listings, "
           f"{len(site['menus'])} menus → {a.out}")
@@ -127,12 +135,36 @@ def cmd_render(a):
     return assemble(a.work, a.out, gif=a.gif, music=getattr(a, "music", None))
 
 
+def site_map(a, cf):
+    """The map a demo drives from: --index as given, else this site's cached map, else the site explored first.
+    Without a map there is no product knowledge to write the founder's script from."""
+    if a.index:
+        return a.index
+    from urllib.parse import urlparse
+    host = (urlparse(a.url).hostname or "site").removeprefix("www.")
+    path = MAPS / f"{host}.json"
+    if not path.exists():
+        from . import explore
+        print(f"no map of {host} yet: exploring it first")
+        MAPS.mkdir(parents=True, exist_ok=True)
+        site = explore.explore(a.url, out=str(path), cf=cf)["_site"]
+        if site["blocked"]:
+            path.unlink(missing_ok=True)
+            raise _blocked(site)
+    return str(path)
+
+
 def cmd_demo(a):
     cf = _cf(a)
     a.work = a.work or str(Path(a.out).with_suffix("")) + ".run"
     a.goal = task_goal(a.prompt)
     if a.goal != a.prompt:
         print(f"goal: {a.goal}")
+    a.index = site_map(a, cf)
+    if a.voice:  # the founder's script comes first; the recording is narrated from it
+        from .index import load as load_index
+        from .narrate import story
+        story.write(cf, a.prompt, load_index(a.index), a.work, product=a.product)
     result = cmd_run(a, cf)
     if a.voice:
         cmd_narrate(a, cf)  # camera-follow uses page maps where the run has them (navigator); otherwise frames as shot

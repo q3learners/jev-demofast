@@ -177,3 +177,20 @@ def test_links_per_route_are_capped(monkeypatch):
     session, _ = fake_session(pages)
     m = explore("https://shop.test/", max_pages=4, cf=None, log=lambda x: None, session=session)
     assert len(m["/collections/:handle"]["links"]) <= 80
+
+
+def test_explore_chooses_the_browser_before_the_browser_library_loads():
+    """browser-harness reads which Chrome to use (BU_NAME) once, when it loads: loaded first, explore went to the
+    harness's default connection instead of the tool's own Chrome."""
+    import subprocess
+    import sys
+    probe = (
+        "import sys\n"
+        "import jev_demofast.cli as cli\n"
+        "def _cf(a=None, require=True):\n"
+        "    print('loaded' if 'browser_harness.helpers' in sys.modules else 'not loaded')\n"
+        "    raise SystemExit(0)\n"
+        "cli._cf = _cf\n"
+        "cli.main(['explore', 'https://shop.test/'])\n")
+    out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True).stdout
+    assert out.strip() == "not loaded"
