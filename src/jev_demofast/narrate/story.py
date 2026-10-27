@@ -9,6 +9,7 @@ import os
 import re
 from urllib.parse import urlparse
 
+from ..drive.guards import task_goal
 from . import shots as shots_mod
 
 SYSTEM = """You are the founder of the product on this website. You are planning a screen-recorded demo of it: what
@@ -84,6 +85,8 @@ def write(cf, prompt, index, work, product="", log=print):
                     cf.s.script_extra).strip()
     text, raw = _parse(reply)
     shots = shots_mod.validate(raw, index, log=log)
+    if shots and "task" in shots[-1]:  # the brief's goal, as typed: the model's rewording ("Under $75, $76 - $100...")
+        shots[-1]["task"] = task_goal(brief)  # asked for more than the brief, and the result check failed it
     os.makedirs(work, exist_ok=True)
     with open(os.path.join(work, "story.txt"), "w") as f:
         f.write(text + "\n")

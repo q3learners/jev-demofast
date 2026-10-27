@@ -240,3 +240,12 @@ def test_a_demo_without_shots_records_the_goal(monkeypatch, tmp_path):
     monkeypatch.setattr(jev_drive, "run", lambda *a, **k: called.append("goal") or {})
     cli.cmd_run(_run_args(tmp_path), cf="cf")
     assert called == ["goal"]
+
+
+def test_the_task_shot_is_the_briefs_goal_in_its_own_words(tmp_path):
+    """Allbirds: the model's task "Apply filters ... Under $75, $76 - $100, $101 - $125, $126 - $150" failed the
+    check on a screen that showed men's running shoes under $150 (the lower ranges were greyed out)."""
+    cf = Writer(json.dumps({"script": "Watch.", "shots": [
+        {"page": "/", "show": ""}, {"task": "Apply filters Under $75, $76 - $100", "show": "payoff"}]}))
+    story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert story.shots(str(tmp_path))[-1] == {"task": cli.task_goal(PROMPT), "show": "payoff"}
