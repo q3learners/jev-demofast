@@ -14,7 +14,7 @@ from .menus import LEFT_SITE
 from .popups import clear_popups, covered, first_screen
 from .session import Session, origin
 
-SCROLL_STEPS = 2  # about one screen each: the viewer sees what the founder talks about, not only the top banner
+SCROLL_STEPS = 1  # about one screen: the viewer sees past the top banner (two per page made tutorq.ai 89 s long)
 TASK_STEPS = 12
 CAN_SCROLL = "scrollY + innerHeight < document.documentElement.scrollHeight - 40"
 SCROLL = "window.scrollBy(0, Math.round(innerHeight * 0.8))"

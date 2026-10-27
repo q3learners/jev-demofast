@@ -190,6 +190,8 @@ def test_narrate_uses_one_take_with_an_elevenlabs_voice_and_clips_otherwise(monk
 def test_the_budget_is_per_shot():
     from jev_demofast.narrate import fit
     assert fit.budget([{"shot": 0}, {"shot": 1}, {"shot": 1}, {"shot": 2}]) == 20 + 20 + 8 + 20
+    # a scroll is a glance, not a new thought: tutorq.ai at 8 words per scroll ran to 89 s
+    assert fit.budget([{"shot": 0}, {"shot": 0, "do": "look"}]) == 20 + fit.WORDS_PER_LOOK == 25
     assert fit.budget([{}, {}]) == 26
 
 

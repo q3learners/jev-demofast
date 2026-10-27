@@ -10,8 +10,8 @@ import os
 from . import voiceover
 
 WORDS_PER_SEGMENT = 13  # about 5 s of speech per recorded moment on average; quick steps take less, the opening more
-WORDS_PER_SHOT, WORDS_PER_MORE = 20, 8  # with a shot list: a screen of the founder's story, and each further moment
-# in it (a scroll, a filter); 13 per click cut tutorq.ai's four-product script to a 19 s video
+WORDS_PER_SHOT, WORDS_PER_MORE, WORDS_PER_LOOK = 20, 8, 5  # with a shot list: a screen of the founder's story, and each further moment
+# in it (a filter, the results), and a scroll down the same page; 13 per click cut tutorq.ai's four-product script to a 19 s video
 EMPTY = "…"  # narration.txt's entry for a quick step with no words of its own
 
 SYSTEM = """You are the founder of this product, recording the voice-over for a demo of it in one take, the way you'd
@@ -31,9 +31,10 @@ what you want this week, and we flag what won't fit before you commit. [04] And 
 minute."
 
 With a shot list, each moment says why you put it in the demo (show) and what's on screen there (headings, after a
-scroll): speak to that reason in your own words, and never read the headings out as a list.
+scroll): speak to that reason in your own words. Never quote a heading or a slogan from the page ("Different starts,
+same progress."): the viewer is reading it already. A scroll (do: look) needs only a few words, or none.
 
-Never write stage directions or captions ("open the Men menu", "filters open", "Active takes us to the collection"):
+Never write stage directions or captions ("open the Men menu", "let's open K-12", "filters open", "Active takes us to the collection"):
 the viewer sees those. Say what the founder would say over them.
 
 Sound like a person presenting, not reading:
@@ -64,7 +65,8 @@ def budget(segs):
         if "shot" not in seg:
             total += WORDS_PER_SEGMENT
         else:
-            total += WORDS_PER_MORE if seg["shot"] in seen else WORDS_PER_SHOT
+            more = WORDS_PER_LOOK if seg.get("do") == "look" else WORDS_PER_MORE
+            total += more if seg["shot"] in seen else WORDS_PER_SHOT
             seen.add(seg["shot"])
     return total
 

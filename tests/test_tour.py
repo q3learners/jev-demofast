@@ -117,8 +117,8 @@ HOME = {"page": "/", "show": "the promise"}
 
 def test_each_shot_is_reached_by_its_link_and_shown():
     result, actions = play([HOME, {"page": "/k12", "show": "K-12"}, {"page": "/sat", "show": "SAT"}])
-    assert [a["do"] for a in actions] == ["open", "look", "look", "click", "look", "look", "click"]
-    assert [a["shot"] for a in actions if a["do"] == "click"] == [1, 2] and actions[3]["show"] == "K-12"
+    assert [a["do"] for a in actions] == ["open", "look", "click", "look", "click"]
+    assert [a["shot"] for a in actions if a["do"] == "click"] == [1, 2] and actions[2]["show"] == "K-12"
     assert result["verified"] is True and result["skipped"] == []
 
 
