@@ -183,7 +183,7 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             return self._json(400, {"error": "send JSON"})
-        url, prompt, voice = str(body.get("url", "")), str(body.get("prompt", "")), str(body.get("voice", "apollo"))
+        url, prompt, voice = str(body.get("url", "")), str(body.get("prompt", "")), str(body.get("voice", "chris"))
         problem = check_url(url) or check_prompt(prompt) or check_voice(voice)
         if problem:
             return self._json(400, {"error": problem})

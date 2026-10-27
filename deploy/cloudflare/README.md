@@ -26,7 +26,9 @@ Wrangler 4.153 needs Node 22 or newer.
    for k in CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN JEV_TOKEN NEBIUS_API_KEY; do
      grep "^$k=" ../../../mvpjev/.env | cut -d= -f2- | npx wrangler secret put "$k"
    done
+   grep "^ELEVENLABS_API_KEY=" ../../../tutorq/.env | cut -d= -f2- | npx wrangler secret put ELEVENLABS_API_KEY
    ```
+   With `ELEVENLABS_API_KEY`, demos are narrated in one ElevenLabs take (voices: chris, eric, will, sarah, jessica).
 
 ## Deploy, test, run locally
 

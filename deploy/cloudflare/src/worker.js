@@ -8,7 +8,8 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { signedIn } from "./access.js";
 
-const SECRETS = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "JEV_TOKEN", "NEBIUS_API_KEY", "JDF_LLM_PROVIDER"];
+const SECRETS = ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "JEV_TOKEN", "NEBIUS_API_KEY", "ELEVENLABS_API_KEY",
+  "JDF_LLM_PROVIDER"];
 const RUN_ID = /^[0-9a-f]{12}$/;
 
 export class Recorder extends Container {
