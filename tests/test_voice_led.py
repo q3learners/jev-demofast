@@ -183,3 +183,24 @@ def test_narrate_uses_one_take_with_an_elevenlabs_voice_and_clips_otherwise(monk
     calls.clear()
     cli.cmd_narrate(argparse.Namespace(**{**vars(a), "voice": "apollo"}), Cf())
     assert calls[0] == ("clips", "apollo") and calls[1] == ("assemble", None)
+
+
+# --- the shot list sets the voice-over's length ----------------------------------------------------------------
+
+def test_the_budget_is_per_shot():
+    from jev_demofast.narrate import fit
+    assert fit.budget([{"shot": 0}, {"shot": 1}, {"shot": 1}, {"shot": 2}]) == 20 + 20 + 8 + 20
+    assert fit.budget([{}, {}]) == 26
+
+
+def test_the_voiceover_writer_sees_why_each_moment_is_there(tmp_path):
+    (tmp_path / "actions.json").write_text(json.dumps({"goal": "tour", "actions": [
+        {"segment": "00", "do": "open", "shot": 0, "show": "the promise"},
+        {"segment": "01", "do": "click", "target": "K-12", "shot": 1, "show": "help for every subject",
+         "headings": ["Your child's personal tutor"]}]}))
+    (tmp_path / "story.txt").write_text("Every learner hits a wall.\n")
+    cf = Writer("[00] Every learner hits a wall. [01] K-12 covers every subject.")
+    script.write(cf, str(tmp_path), log=lambda m: None)
+    segs = cf.calls[0]["user"]["segments"]
+    assert segs[1]["show"] == "help for every subject" and segs[1]["headings"] == ["Your child's personal tutor"]
+    assert "show" in cf.calls[0]["system"]
