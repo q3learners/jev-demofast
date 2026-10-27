@@ -7,6 +7,7 @@ four products. The shots come from the founder's script (narrate/story.py), chec
 import time
 from urllib.parse import urlparse
 
+from ..narrate.shots import offerable
 from ..record.recorder import Recorder
 from .guards import DryRunStop, on_site
 from .jev_drive import click_on_camera, drive_goal
@@ -44,6 +45,8 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
             rec.discard()
             rec.snap(1.5)
         rec.commit({"do": "open", "shot": 0, "show": shots[0]["show"]}, s.observe())
+        landed = urlparse(s.page["url"]).hostname  # "allbirds.com" as typed lands on www.allbirds.com
+        known = offerable(index)
         _show(s, rec, 0, shots[0]["show"])
         for i, shot in enumerate(shots[1:], 1):
             clear_popups(cf, s, log)
@@ -54,7 +57,7 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
                 for action in rec.actions[before:]:
                     action.update(shot=i, show=shot["show"])
                 continue
-            problem = _reach(s, rec, shot["page"], i, shot["show"])
+            problem = _reach(s, rec, shot["page"], i, shot["show"], landed, known.get(shot["page"], []))
             if problem:
                 rec.discard()
                 result["skipped"].append(shot["page"])
@@ -62,16 +65,17 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
                 continue
             log(f"{ms():>6} ms  shot {i}: {shot['page']} ({rec.actions[-1]['do']})")
             _show(s, rec, i, shot["show"])
-        if result["skipped"]:
-            why = "couldn't show " + ", ".join(result["skipped"])
         result["verified"] = task_ok and not result["skipped"]
-        if not result["verified"]:
-            rec.unconfirmed(why)
+        if not task_ok:
+            rec.unconfirmed(why)  # the task's own reason, on the task's last moment
+        elif result["skipped"] and not task:
+            rec.unconfirmed("couldn't show " + ", ".join(result["skipped"]))
+        # with a task that worked, its result stands; the skipped pages reach the voice-over as not recorded
     except DryRunStop as stop:
         result["would_click"] = str(stop)
         log(f"{ms():>6} ms  DRY RUN: stopped before {str(stop)!r}; nothing was changed")
     finally:
-        rec.save(goal, cf.decisions)
+        rec.save(goal, cf.decisions, skipped=result["skipped"])
         s.close()
     result.update(seconds=round(time.perf_counter() - t0, 1), decisions=steps[0], **cf.stats)
     log(f"done in {result['seconds']} s | {len(shots)} shots, {len(result['skipped'])} skipped | "
@@ -83,18 +87,25 @@ def _path(url):
     return urlparse(url).path.rstrip("/") or "/"
 
 
-def arrived(url, page, host):
-    """On the shot's page: its path, or a redirect to another host of the site (tutorq.ai/campus → campus.tutorq.ai)."""
-    return on_site(url, host) and (_path(url) == _path(page) or urlparse(url).hostname != host)
+def arrived(page_now, page, host, landed, texts):
+    """On the shot's page: its path on the site's own host, or (a redirect, e.g. tutorq.ai/campus → campus.tutorq.ai)
+    a screen showing what the map read on that page. A redirect home or to a login wall shows neither."""
+    url = page_now["url"]
+    if not on_site(url, host):
+        return False
+    if urlparse(url).hostname == landed and _path(url) == _path(page):
+        return True
+    screen = " ".join((page_now.get("text") or "").split())
+    return any(" ".join(t.split()) in screen for t in texts if t)
 
 
-def _reach(s, rec, page, i, show):
+def _reach(s, rec, page, i, show, landed, texts):
     """Go to the shot's page on camera. Returns why it couldn't, or None once there."""
-    if _path(s.page["url"]) == _path(page) and urlparse(s.page["url"]).hostname == s.host:
+    if _path(s.page["url"]) == _path(page) and urlparse(s.page["url"]).hostname == landed:
         return None
     _to_top(s)  # the navigation is at the top, where a person would scroll back to
     action = {"shot": i, "show": show}
-    link = next((e for e in s.elements() if "click" in e["actions"] and _leads_to(s, e, page)), None)
+    link = next((e for e in s.elements() if "click" in e["actions"] and _leads_to(s, e, page, landed)), None)
     try:
         if link:
             got = click_on_camera(s, rec, link, {"do": "click", "target": link["label"], **action})
@@ -114,7 +125,7 @@ def _reach(s, rec, page, i, show):
         return "it didn't load"
     if got is LEFT_SITE:
         return "it led off the site"
-    if not arrived(s.page["url"], page, s.host):
+    if not arrived(s.page, page, s.host, landed, texts):
         rec.actions[-1]["outcome"] = f"not confirmed: it opened {s.page['url']} instead of {page}"
         return f"it opened {s.page['url']}"
     return None
@@ -126,9 +137,9 @@ def _to_top(s):
     s.observe()
 
 
-def _leads_to(s, e, page):
+def _leads_to(s, e, page, landed):
     href = s.href(e["node"])
-    return bool(href) and urlparse(href).hostname == s.host and _path(href) == _path(page)
+    return bool(href) and urlparse(href).hostname == landed and _path(href) == _path(page)
 
 
 def _show(s, rec, i, show):

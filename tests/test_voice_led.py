@@ -196,7 +196,7 @@ def test_the_budget_is_per_shot():
 
 
 def test_the_voiceover_writer_sees_why_each_moment_is_there(tmp_path):
-    (tmp_path / "actions.json").write_text(json.dumps({"goal": "tour", "actions": [
+    (tmp_path / "actions.json").write_text(json.dumps({"goal": "tour", "skipped": ["/campus"], "actions": [
         {"segment": "00", "do": "open", "shot": 0, "show": "the promise"},
         {"segment": "01", "do": "click", "target": "K-12", "shot": 1, "show": "help for every subject",
          "headings": ["Your child's personal tutor"]}]}))
@@ -204,5 +204,8 @@ def test_the_voiceover_writer_sees_why_each_moment_is_there(tmp_path):
     cf = Writer("[00] Every learner hits a wall. [01] K-12 covers every subject.")
     script.write(cf, str(tmp_path), log=lambda m: None)
     segs = cf.calls[0]["user"]["segments"]
-    assert segs[1]["show"] == "help for every subject" and segs[1]["headings"] == ["Your child's personal tutor"]
-    assert "show" in cf.calls[0]["system"]
+    # the reason was planned before recording, not seen: labelled as such (Allbirds: "the Men menu puts every
+    # category within reach" over a scroll of the home page)
+    assert segs[1]["planned_reason"] == "help for every subject" and "show" not in segs[1]
+    assert segs[1]["headings"] == ["Your child's personal tutor"]
+    assert cf.calls[0]["user"]["not_recorded"] == ["/campus"] and "not_recorded" in cf.calls[0]["system"]

@@ -30,8 +30,11 @@ let me show you how we fixed it. [01] Everything starts from your backlog, so no
 what you want this week, and we flag what won't fit before you commit. [04] And that's a sprint, planned in under a
 minute."
 
-With a shot list, each moment says why you put it in the demo (show) and what's on screen there (headings, after a
-scroll): speak to that reason in your own words. Never quote a heading or a slogan from the page ("Different starts,
+With a shot list, each moment says why you planned it (planned_reason, written before recording: a plan, not what
+was seen) and what's on screen there (headings, after a scroll). Speak to the reason in your own words, but describe
+only what the moment recorded (do, target, headings, items): never a menu, panel or feature the plan mentions that
+the moment doesn't show. not_recorded lists planned pages that couldn't be shown: leave out what your script says
+about them. Never quote a heading or a slogan from the page ("Different starts,
 same progress."): the viewer is reading it already. A scroll (do: look) needs only a few words, or none.
 
 Never write stage directions or captions ("open the Men menu", "let's open K-12", "filters open", "Active takes us to the collection"):
@@ -54,7 +57,7 @@ Tell the truth about the recording:
 
 About {budget} words in all, never more."""
 
-FIELDS = {"do", "target", "items", "screen_title", "outcome", "unavailable", "show", "headings"}  # facts, not page text: given the
+FIELDS = {"do", "target", "items", "screen_title", "outcome", "unavailable", "headings"}  # facts, not page text: given the
 # page text, it described the screen again instead of keeping the script
 
 
@@ -71,11 +74,13 @@ def budget(segs):
     return total
 
 
-def write(cf, run_dir, goal, segs, founder_script, attempts=3, log=print):
+def write(cf, run_dir, goal, segs, founder_script, attempts=3, log=print, skipped=()):
     """Write voiceover.txt and narration.txt; returns narration.txt's path."""
     ids = [a["segment"] for a in segs]
     context = {"goal": goal, "founder_script": founder_script,
-               "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in FIELDS}} for a in segs]}
+               "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in FIELDS},
+                             **({"planned_reason": a["show"]} if a.get("show") else {})} for a in segs],
+               **({"not_recorded": list(skipped)} if skipped else {})}
     system = SYSTEM.format(budget=budget(segs))
     best = None
     for attempt in range(attempts):

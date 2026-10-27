@@ -111,8 +111,7 @@ def cmd_run(a, cf=None):
     if a.index:
         from .drive import jev_drive, tour
         from .index import load as load_index
-        from .narrate import story
-        shots = story.shots(a.work) if a.work else []
+        shots = getattr(a, "shots", None) or []  # only the list this demo just wrote, never one left in the work dir
         if shots:  # the founder's shot list: every screen the script speaks about, then the task if there is one
             return tour.run(cf, a.url, shots, load_index(a.index), out=a.work, fresh=a.fresh, dry_run=a.dry_run)
         if getattr(a, "voice", None):
@@ -182,6 +181,7 @@ def cmd_demo(a):
         from .index import load as load_index
         from .narrate import story
         story.write(cf, a.prompt, load_index(a.index), a.work, product=a.product)
+        a.shots = story.shots(a.work)
     result = cmd_run(a, cf)
     if a.voice:
         cmd_narrate(a, cf)  # camera-follow uses page maps where the run has them (navigator); otherwise frames as shot

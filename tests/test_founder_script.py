@@ -225,11 +225,12 @@ def _run_args(tmp_path):
 def test_a_demo_with_shots_records_the_tour(monkeypatch, tmp_path):
     from jev_demofast.drive import tour
     shots = [{"page": "/", "show": ""}, {"task": "find shoes", "show": "payoff"}]
-    (tmp_path / "shots.json").write_text(json.dumps({"shots": shots}))
     called = []
     monkeypatch.setattr(tour, "run", lambda cf, url, s, index, **k: called.append(("tour", s)) or {})
     monkeypatch.setattr(jev_drive, "run", lambda *a, **k: called.append("goal") or {})
-    cli.cmd_run(_run_args(tmp_path), cf="cf")
+    a = _run_args(tmp_path)
+    a.shots = shots
+    cli.cmd_run(a, cf="cf")
     assert called == [("tour", shots)]
 
 
@@ -249,3 +250,43 @@ def test_the_task_shot_is_the_briefs_goal_in_its_own_words(tmp_path):
         {"page": "/", "show": ""}, {"task": "Apply filters Under $75, $76 - $100", "show": "payoff"}]}))
     story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
     assert story.shots(str(tmp_path))[-1] == {"task": cli.task_goal(PROMPT), "show": "payoff"}
+
+
+def test_a_leftover_shot_list_is_never_replayed(monkeypatch, tmp_path):
+    """Review: every demo shares demo.run by default; a later run without --voice toured the old list on a new site."""
+    from jev_demofast.drive import tour
+    (tmp_path / "shots.json").write_text(json.dumps({"shots": [{"page": "/", "show": ""}, {"task": "old", "show": ""}]}))
+    called = []
+    monkeypatch.setattr(tour, "run", lambda *a, **k: called.append("tour") or {})
+    monkeypatch.setattr(jev_drive, "run", lambda *a, **k: called.append("goal") or {})
+    cli.cmd_run(_run_args(tmp_path), cf="cf")
+    assert called == ["goal"]
+
+
+def test_the_demo_passes_the_shot_list_it_just_wrote(demo, tmp_path, monkeypatch):
+    shots = [{"page": "/", "show": ""}, {"task": "x", "show": ""}]
+
+    def write(cf, prompt, index, work, product="", log=print):
+        import os
+        os.makedirs(work, exist_ok=True)
+        with open(os.path.join(work, "shots.json"), "w") as f:
+            json.dump({"shots": shots}, f)
+    monkeypatch.setattr(story, "write", write)
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_run", lambda a, cf=None: seen.update(shots=getattr(a, "shots", None)) or {})
+    cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--voice", "apollo", "--out", "d.mp4"])
+    assert seen["shots"] == shots
+
+
+def test_the_task_keeps_the_briefs_secret_placeholders(tmp_path):
+    """Review: the task was "Sign in as (secret) ...": the value step had nothing real to type."""
+    cf = Writer(json.dumps({"script": "Watch.", "shots": [{"page": "/", "show": ""}, {"task": "sign in", "show": ""}]}))
+    story.write(cf, "Sign in as {{EMAIL}} and show my team the reports", SITE, str(tmp_path), log=lambda m: None)
+    assert "{{EMAIL}}" in story.shots(str(tmp_path))[-1]["task"] and "{{EMAIL}}" not in json.dumps(cf.calls[0]["user"])
+
+
+def test_a_reply_with_thinking_and_prose_still_gives_the_script_and_shots(tmp_path):
+    body = json.dumps({"script": "Watch this.", "shots": [{"page": "/", "show": "home"}]})
+    cf = Writer("<think>plan the demo {first}</think>\nHere's the plan:\n```json\n" + body + "\n```\nHope it helps.")
+    story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert (tmp_path / "story.txt").read_text() == "Watch this.\n"

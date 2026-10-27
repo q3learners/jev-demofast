@@ -88,7 +88,7 @@ def write(cf, run_dir, product="", attempts=3, log=print):
     if os.path.exists(founder):  # the founder's script, written before recording: one voice-over over the recording
         from . import fit
         with open(founder) as f:
-            return fit.write(cf, run_dir, goal, segs, f.read().strip(), log=log)
+            return fit.write(cf, run_dir, goal, segs, f.read().strip(), log=log, skipped=data.get("skipped", ()))
     context = {"goal": goal, "product": product,
                "note": "The screen_text is what the viewer sees; quote it, don't invent features.",
                "segments": [{"id": a["segment"], **{k: v for k, v in a.items() if k in NARRATOR_FIELDS}} for a in segs]}

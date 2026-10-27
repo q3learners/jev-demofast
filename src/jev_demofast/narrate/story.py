@@ -86,7 +86,8 @@ def write(cf, prompt, index, work, product="", log=print):
     text, raw = _parse(reply)
     shots = shots_mod.validate(raw, index, log=log)
     if shots and "task" in shots[-1]:  # the brief's goal, as typed: the model's rewording ("Under $75, $76 - $100...")
-        shots[-1]["task"] = task_goal(brief)  # asked for more than the brief, and the result check failed it
+        shots[-1]["task"] = task_goal(prompt)  # asked for more than the brief, and the result check failed it. The
+        # prompt, not the masked brief: the task's form step needs the {{EMAIL}}-style placeholders (names, not values)
     os.makedirs(work, exist_ok=True)
     with open(os.path.join(work, "story.txt"), "w") as f:
         f.write(text + "\n")
@@ -98,12 +99,14 @@ def write(cf, prompt, index, work, product="", log=print):
 
 
 def _parse(reply):
-    """(script, shots) from the reply: JSON, possibly in a ``` fence; else the whole reply is the script."""
-    body = re.sub(r"^```(?:json)?\s*|\s*```$", "", reply)
+    """(script, shots) from the reply: the JSON object in it, wherever it sits (after a <think> block, in a ```
+    fence, among prose); else the whole reply, without a think block, is the script."""
+    reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.S).strip()
+    found = re.search(r"\{.*\}", reply, re.S)
     try:
-        data = json.loads(body)
+        data = json.loads(found.group(0)) if found else None
     except ValueError:
-        return reply, []
+        data = None
     if not isinstance(data, dict) or not str(data.get("script") or "").strip():
         return reply, []
     return str(data["script"]).strip(), data.get("shots") or []
