@@ -142,7 +142,8 @@ def test_a_shot_that_wont_load_is_skipped_and_the_tour_goes_on():
     result, actions = play([HOME, {"page": "/k12", "show": "K-12"}, {"page": "/sat", "show": "SAT"}], slow={"/k12"})
     assert result["skipped"] == ["/k12"] and result["verified"] is False
     assert any(a.get("shot") == 2 for a in actions)
-    assert actions[-1]["outcome"].startswith("not confirmed") and "/k12" in actions[-1]["outcome"]
+    # the result page says which; the voice-over doesn't ("We couldn't reach the contact page, but talk to us...")
+    assert not any("outcome" in a for a in actions) and play.rec.skipped == ["/k12"]
 
 
 def test_a_short_page_gets_no_look():

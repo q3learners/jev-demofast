@@ -78,9 +78,8 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
         result["verified"] = task_ok and not result["skipped"]
         if not task_ok:
             rec.unconfirmed(why)  # the task's own reason, on the task's last moment
-        elif result["skipped"] and not task:
-            rec.unconfirmed("couldn't show " + ", ".join(result["skipped"]))
-        # with a task that worked, its result stands; the skipped pages reach the voice-over as not recorded
+        # a skipped page lowers the verdict and is listed on the result page, but isn't a moment to speak about: as
+        # an outcome, the voice-over said "We couldn't reach the contact page" in a pitch
     except DryRunStop as stop:
         result["would_click"] = str(stop)
         log(f"{ms():>6} ms  DRY RUN: stopped before {str(stop)!r}; nothing was changed")
@@ -136,7 +135,6 @@ def _reach(s, rec, page, i, show, landed, texts):
     if got is LEFT_SITE:
         return "it led off the site"
     if not arrived(s.page, page, s.host, landed, texts):
-        rec.actions[-1]["outcome"] = f"not confirmed: it opened {s.page['url']} instead of {page}"
         return f"it opened {s.page['url']}"
     return None
 

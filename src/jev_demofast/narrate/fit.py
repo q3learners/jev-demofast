@@ -34,7 +34,7 @@ With a shot list, each moment says why you planned it (planned_reason, written b
 was seen) and what's on screen there (headings, after a scroll). Speak to the reason in your own words, but describe
 only what the moment recorded (do, target, headings, items): never a menu, panel or feature the plan mentions that
 the moment doesn't show. not_recorded lists planned pages that couldn't be shown: leave out what your script says
-about them. Never quote a heading or a slogan from the page ("Different starts,
+about them, and never mention that anything wasn't shown. Never quote a heading or a slogan from the page ("Different starts,
 same progress."): the viewer is reading it already. A scroll (do: look) needs only a few words, or none.
 
 Never write stage directions or captions ("open the Men menu", "let's open K-12", "filters open", "Active takes us to the collection"):
