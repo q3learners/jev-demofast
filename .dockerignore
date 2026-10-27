@@ -1,0 +1,10 @@
+# Only what the container image needs (deploy/cloudflare/container/Dockerfile builds from the repo root).
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!NOTICE
+!src/
+!deploy/cloudflare/container/
+**/__pycache__

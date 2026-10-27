@@ -232,8 +232,9 @@ def test_the_panel_is_reopened_when_a_filter_click_collapses_it():
         "Running Shoes (12)", "Under $75 (3)", "$76 - $100 (9)"]
 
 
-def test_a_filter_value_the_site_disabled_is_reported_unavailable():
+def test_a_filter_value_the_site_disabled_is_reported_unavailable(monkeypatch):
     """Live: with Running Shoes ticked, Allbirds disables every price band under $126: say so, don't just skip."""
+    monkeypatch.setattr(filters.time, "sleep", lambda s: None)
     class Disabled(Listing):
         def __init__(self, *a, **k):
             super().__init__(*a, **k)
@@ -321,3 +322,165 @@ def test_a_value_disabled_only_while_the_listing_reloads_is_still_applied(monkey
     filters.apply_filters(Cf(picks), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None,
                           unavailable=unavailable)
     assert unavailable == [] and "Running Shoes (12)" in s.events
+
+
+def reloading_listing(looks, slow_looks, values=("Running Shoes",)):
+    """A listing whose options stay disabled for `slow_looks` looks while it reloads (the cloud is slower)."""
+    class Reloading(Listing):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.panel = True
+
+        @property
+        def browser(self):
+            inner = super().browser
+
+            class B:
+                def evaluate(self, js, **k):
+                    if "disabled" in js:
+                        return list(values) if looks["n"] < slow_looks else []
+                    return inner.evaluate(js)
+
+                def call(self, method, **params):
+                    return inner.call(method, **params)
+            return B()
+
+        def observe(self):
+            looks["n"] += 1
+            page = super().observe()
+            if looks["n"] < slow_looks:
+                page["actions"] = [a for a in page["actions"] if not a["label"].startswith("Running")]
+            return page
+    return Reloading()
+
+
+def test_a_slow_reload_in_the_cloud_doesnt_make_a_value_unavailable(monkeypatch):
+    """Cloud: the listing took longer to reload, and $126 - $150 was reported greyed out though it wasn't."""
+    monkeypatch.setattr(filters.time, "sleep", lambda s: None)
+    looks = {"n": 0}
+    picks = {"checks": [{"group": "Product Type", "value": "Running Shoes"}], "ranges": [], "sort": None}
+    s, unavailable = reloading_listing(looks, slow_looks=6), []
+    filters.apply_filters(Cf(picks), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None,
+                          unavailable=unavailable)
+    assert unavailable == [] and "Running Shoes (12)" in s.events
+
+
+class StickyPanel(Listing):
+    """Allbirds' filter panel: open over the results until its own \"Collapse filters\" control closes it."""
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.panel = True
+
+    def observe(self):
+        page = super().observe()
+        if self.panel:
+            page["actions"] += [{"kind": "click", "node": 40, "id": "e40", "role": "button", "label": "Collapse filters"},
+                                {"kind": "click", "node": 41, "id": "e41", "role": "button", "label": "Apply filters"}]
+        return page
+
+    def act(self, e, kind, text=None):
+        super().act(e, kind, text)
+        if e["label"] == "Collapse filters":
+            self.panel = False
+
+
+def test_the_showcase_closes_a_filter_panel_that_ignores_escape():
+    """Cloud: Allbirds' panel stayed open over the results after Escape, so the video never showed them. Its own
+    "Collapse filters" control closes it."""
+    s, rec = StickyPanel(), Rec()
+    showcase.showcase(Cf(UNDER_100), s, rec, "goal", log=lambda m: None)
+    assert s.events[0] == "Collapse filters" and not s.panel and rec.snaps[-3:] == [20, 21, 22]
+
+
+def test_the_narrator_names_only_the_items_outlined_on_screen():
+    """Cloud: three Dasher NZs were outlined, but the narration named a Golf Dasher the viewer never saw."""
+    s, rec = Listing(), Rec()
+    cf = Cf(UNDER_100, items=("Tree Runner", "Dasher NZ", "Wool Runner", "Trail Runner", "Golf Dasher"))
+    showcase.showcase(cf, s, rec, "goal", log=lambda m: None)
+    assert rec.commits[-1]["items"] == ["Tree Runner", "Dasher NZ", "Wool Runner"]
+
+
+def test_the_video_never_opens_on_a_popup(monkeypatch, tmp_path):
+    """Cloud: the first frame was Allbirds' "Unlock 10% Off" pop-up. Pop-ups are cleared before the opening frame."""
+    events = []
+    monkeypatch.setattr(jev_drive, "first_screen", lambda cf, s, log=print: events.append("clear"))
+
+    class Watched(Listing):
+        @property
+        def browser(self):
+            inner = super().browser
+
+            class B:
+                def evaluate(self, js, **k):
+                    return inner.evaluate(js)
+
+                def call(self, method, **params):
+                    if method == "Page.captureScreenshot":
+                        events.append("shot")
+                    return inner.call(method, **params)
+            return B()
+    run(monkeypatch, tmp_path, Cf(UNDER_100), listing=Watched)
+    assert events[0] == "clear"
+
+
+def test_a_popup_landing_as_the_opening_frame_is_taken_is_cleared_and_the_frame_retaken(monkeypatch, tmp_path):
+    seen = {"covered": 0, "cleared": 0}
+
+    def covered(s):
+        seen["covered"] += 1
+        return seen["covered"] == 1  # covered right after the first opening frame, then gone
+    monkeypatch.setattr(jev_drive, "covered", covered)
+    monkeypatch.setattr(jev_drive, "clear_popups", lambda cf, s, log=print: seen.__setitem__("cleared", seen["cleared"] + 1))
+    run(monkeypatch, tmp_path, Cf(UNDER_100))
+    frames = json.loads((tmp_path / "frames.json").read_text())
+    assert seen["cleared"] >= 1 and sum(f["segment"] == "00" for f in frames) == 1  # the covered frame was discarded
+
+
+class Toggle(Listing):
+    """Allbirds: one button opens and closes the panel, labelled "Filter Collapse filters (20 products)" either way;
+    the panel ignores Escape."""
+    def observe(self):
+        acts = [{"kind": "click", "node": 9, "id": "e9", "role": "button", "label": "Filter Collapse filters (20 products)"}]
+        if self.panel:
+            acts.append({"kind": "click", "node": 13, "id": "e13", "role": "checkbox", "label": "Running Shoes (12)"})
+        acts += [{"kind": "click", "node": 20 + n, "id": f"p{n}", "role": "link", "label": f"{name} {price}"}
+                 for n, (name, price) in enumerate(SHOES)]
+        self.page = {"url": "https://shop.test/collections/mens", "title": "Men's shoes", "scroll": 0, "actions": acts,
+                     "text": "Men's shoes " + " ".join(f"{a} {b}" for a, b in SHOES)}
+        return self.page
+
+    def act(self, e, kind, text=None):
+        self.events.append(e["label"])
+        if e["node"] == 9:
+            self.panel = not self.panel
+
+
+def test_the_showcase_closes_a_toggle_panel_only_while_it_is_open():
+    s = Toggle()
+    s.panel = True
+    showcase.showcase(Cf(UNDER_100), s, Rec(), "goal", log=lambda m: None)
+    assert s.events == ["Filter Collapse filters (20 products)"] and not s.panel
+    closed = Toggle()  # already closed: clicking the toggle would open it over the results
+    showcase.showcase(Cf(UNDER_100), closed, Rec(), "goal", log=lambda m: None)
+    assert closed.events == [] and not closed.panel
+
+
+def test_the_results_are_checked_with_the_filter_panel_closed(monkeypatch, tmp_path):
+    """Allbirds (mens-new-arrivals): the check scored 0.27 on a screen where the open panel hid every result."""
+    seen = []
+    real = jev_drive._explored_verdict
+    monkeypatch.setattr(jev_drive, "_explored_verdict",
+                        lambda cf, goal, s, expected: seen.append(s.panel) or real(cf, goal, s, expected))
+    run(monkeypatch, tmp_path, Cf(UNDER_100), listing=StickyPanel)
+    assert seen and seen[-1] is False
+
+
+def test_the_narrowest_filter_is_applied_first():
+    """Allbirds bestsellers: "Under $75" went first, after which "Running Shoes" had no results and greyed out. The
+    group with one pick (what the shopper wants) goes before the group with several (the price bands)."""
+    picks = {"checks": [{"group": "Price", "value": "Under $75"}, {"group": "Price", "value": "$76 - $100"},
+                        {"group": "Product Type", "value": "Running Shoes"}], "ranges": [], "sort": None}
+    s = Listing()
+    filters.apply_filters(Cf(picks), s, Rec(), "goal", MAP["/collections/:handle"], log=lambda m: None)
+    clicked = [e for e in s.events if e.split(" (")[0] in ("Running Shoes", "Under $75", "$76 - $100")]
+    assert clicked[0].startswith("Running Shoes")

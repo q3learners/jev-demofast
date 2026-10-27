@@ -101,7 +101,12 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
                 break
             path = todo[0]
             queue.remove(path)
-            s.browser.call("Page.navigate", url=origin + path)
+            try:
+                s.browser.call("Page.navigate", url=origin + path)
+            except TimeoutError as e:  # one page that won't load costs that page, not the map
+                log(f"  skipped {path}: {e}")
+                visited.append(path)
+                continue
             s.wait_loaded()
             s.observe()
             if not on_site(s.page["url"], urlparse(url).hostname) or bot_check(s.page):

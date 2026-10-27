@@ -7,7 +7,7 @@ import pytest
 from jev_demofast import cli
 from jev_demofast import explore as explore_mod
 from jev_demofast.drive import jev_drive
-from jev_demofast.narrate import script, story
+from jev_demofast.narrate import fit, script, story
 
 from test_drive_filters_showcase import MAP, UNDER_100, Cf, Listing
 
@@ -74,12 +74,12 @@ def test_narration_fits_the_founders_script_over_the_segments(tmp_path):
                         "unavailable": ["Price: Under $75"]},
                        {"segment": "02", "do": "read", "target": "showcase", "items": ["Dasher NZ $140"]}])
     (tmp_path / "story.txt").write_text("Finding a running shoe should take seconds. Our filters get you there.")
-    cf = Writer("00 | Open | Finding a running shoe should take seconds.\n01 | Price | Nothing under $75 today, so "
-                "we go up to $150.\n02 | Results | And there's the Dasher NZ at $140.")
+    cf = Writer("[00] Finding a running shoe should take seconds. [01] Nothing under $75 today, so we go up to $150. "
+                "[02] And there's the Dasher NZ at $140.")
     lines = script.read_lines(script.write(cf, str(tmp_path), log=lambda m: None))
     assert lines[0] == "Finding a running shoe should take seconds." and len(lines) == 3
     call = cf.calls[0]
-    assert call["system"] == script.FIT.format(cap=script.LINE_CAP, budget=script.word_budget(3))
+    assert call["system"] == fit.SYSTEM.format(budget=fit.budget([{}] * 3))
     assert call["user"]["founder_script"].startswith("Finding a running shoe")
     assert call["user"]["segments"][1]["unavailable"] == ["Price: Under $75"]  # the truth pass sees what was greyed out
     assert "screen_text" not in call["user"]["segments"][0]  # given page text, it described the screen again
@@ -95,7 +95,7 @@ def test_without_a_founders_script_the_narration_is_written_as_before(tmp_path):
 def test_a_founders_sentence_fits_the_word_budget():
     """At 11 words a segment the model wrote captions; a spoken founder sentence needs more room."""
     assert script.WORDS_PER_SEGMENT >= 16 and script.LINE_CAP >= 24
-    assert "2-6 words" not in script.SYSTEM and "2-6 words" not in script.FIT
+    assert "2-6 words" not in script.SYSTEM and "2-6 words" not in fit.SYSTEM
 
 
 def test_filter_values_the_site_disabled_reach_the_narrator_on_their_own_filter(monkeypatch, tmp_path):
@@ -123,7 +123,8 @@ def demo(monkeypatch, tmp_path):
     def explore(url, out=None, **k):
         seen["explored"] += 1
         seen["order"].append("explore")
-        found = {"_site": {"menus": [], "blocked": seen.get("blocked")}, "/": {"kind": "page"}}
+        home = {"kind": "page", "texts": [] if seen.get("empty") else ["Wildly Comfortable. Super Natural."]}
+        found = {"_site": {"menus": [], "blocked": seen.get("blocked")}, "/": home}
         with open(out, "w") as f:
             json.dump(found, f)
         return found
@@ -164,3 +165,128 @@ def test_a_demo_on_a_site_that_blocks_the_tool_stops_before_recording(demo):
     with pytest.raises(SystemExit) as stop:
         cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--out", "d.mp4"])
     assert "blocked: Access Denied" in str(stop.value) and demo["order"] == ["explore"]
+
+
+def test_a_site_with_nothing_readable_stops_before_a_script_is_written(demo, tmp_path):
+    # k12.tutorq.ai draws on a canvas (Flutter): the map had one page and no text, and the script invented a menu,
+    # a listing and filters. No map, no product: stop instead, and keep no cache of the empty map.
+    demo["empty"] = True
+    with pytest.raises(SystemExit) as stop:
+        cli.main(["demo", PROMPT, "--url", "https://k12.shop.test/", "--voice", "apollo", "--out", "d.mp4"])
+    assert str(stop.value).startswith("stopped: nothing readable on k12.shop.test") and demo["order"] == ["explore"]
+    assert not (tmp_path / "maps" / "k12.shop.test.json").exists()
+
+
+def test_an_empty_map_knows_nothing_and_a_page_with_text_knows_something():
+    assert story.knows_nothing({"_site": {"menus": []}, "/": {"kind": "page", "texts": []}})
+    assert not story.knows_nothing({"_site": {"menus": []}, "/": {"kind": "page", "texts": ["A tutor for every subject"]}})
+    assert not story.knows_nothing(SITE)
+
+
+# --- the shot list comes with the script ------------------------------------------------------------------------
+
+def test_the_script_comes_with_shots_from_the_map(tmp_path):
+    from test_shot_list import MAP as TUTORQ
+    cf = Writer(json.dumps({"script": "Every learner hits a wall.",
+                            "shots": [{"page": "/k12", "show": "K-12"}, {"page": "/pricing", "show": "x"}]}))
+    story.write(cf, "Show parents how TutorQ works", TUTORQ, str(tmp_path), log=lambda m: None)
+    assert (tmp_path / "story.txt").read_text() == "Every learner hits a wall.\n"
+    assert story.shots(str(tmp_path)) == [{"page": "/", "show": ""}, {"page": "/k12", "show": "K-12"}]
+    pages = cf.calls[0]["user"]["what_we_know"]["pages"]
+    assert "/k12" in pages and "/grader/login" not in pages
+
+
+def test_a_reply_that_is_not_json_is_the_script_with_no_shots(tmp_path):
+    story.write(Writer("Just a spoken script."), PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert (tmp_path / "story.txt").read_text() == "Just a spoken script.\n" and story.shots(str(tmp_path)) == []
+    fenced = "```json\n" + json.dumps({"script": "Fenced.", "shots": [{"page": "/", "show": "home"}]}) + "\n```"
+    story.write(Writer(fenced), PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert (tmp_path / "story.txt").read_text() == "Fenced.\n"
+
+
+def test_the_prompt_has_no_shop_shape():
+    from jev_demofast.narrate.shots import MAX_SHOTS
+    assert "the menu; the listing" not in story.SYSTEM and '"shots"' in story.SYSTEM
+    assert str(MAX_SHOTS) in story.SYSTEM.format(sample="", max_shots=MAX_SHOTS)
+
+
+def test_pattern_routes_without_examples_are_not_offered():
+    from jev_demofast.narrate.shots import offerable
+    assert "/collections/:handle" not in offerable(SITE)
+
+
+def _run_args(tmp_path):
+    import argparse
+    (tmp_path / "map.json").write_text(json.dumps(SITE))
+    return argparse.Namespace(index=str(tmp_path / "map.json"), url="https://shop.test/", goal="find shoes",
+                              work=str(tmp_path), fresh=False, no_blur=False, dry_run=False, voice="sarah")
+
+
+def test_a_demo_with_shots_records_the_tour(monkeypatch, tmp_path):
+    from jev_demofast.drive import tour
+    shots = [{"page": "/", "show": ""}, {"task": "find shoes", "show": "payoff"}]
+    called = []
+    monkeypatch.setattr(tour, "run", lambda cf, url, s, index, **k: called.append(("tour", s)) or {})
+    monkeypatch.setattr(jev_drive, "run", lambda *a, **k: called.append("goal") or {})
+    a = _run_args(tmp_path)
+    a.shots = shots
+    cli.cmd_run(a, cf="cf")
+    assert called == [("tour", shots)]
+
+
+def test_a_demo_without_shots_records_the_goal(monkeypatch, tmp_path):
+    from jev_demofast.drive import tour
+    called = []
+    monkeypatch.setattr(tour, "run", lambda *a, **k: called.append("tour") or {})
+    monkeypatch.setattr(jev_drive, "run", lambda *a, **k: called.append("goal") or {})
+    cli.cmd_run(_run_args(tmp_path), cf="cf")
+    assert called == ["goal"]
+
+
+def test_the_task_shot_is_the_briefs_goal_in_its_own_words(tmp_path):
+    """Allbirds: the model's task "Apply filters ... Under $75, $76 - $100, $101 - $125, $126 - $150" failed the
+    check on a screen that showed men's running shoes under $150 (the lower ranges were greyed out)."""
+    cf = Writer(json.dumps({"script": "Watch.", "shots": [
+        {"page": "/", "show": ""}, {"task": "Apply filters Under $75, $76 - $100", "show": "payoff"}]}))
+    story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert story.shots(str(tmp_path))[-1] == {"task": cli.task_goal(PROMPT), "show": "payoff"}
+
+
+def test_a_leftover_shot_list_is_never_replayed(monkeypatch, tmp_path):
+    """Review: every demo shares demo.run by default; a later run without --voice toured the old list on a new site."""
+    from jev_demofast.drive import tour
+    (tmp_path / "shots.json").write_text(json.dumps({"shots": [{"page": "/", "show": ""}, {"task": "old", "show": ""}]}))
+    called = []
+    monkeypatch.setattr(tour, "run", lambda *a, **k: called.append("tour") or {})
+    monkeypatch.setattr(jev_drive, "run", lambda *a, **k: called.append("goal") or {})
+    cli.cmd_run(_run_args(tmp_path), cf="cf")
+    assert called == ["goal"]
+
+
+def test_the_demo_passes_the_shot_list_it_just_wrote(demo, tmp_path, monkeypatch):
+    shots = [{"page": "/", "show": ""}, {"task": "x", "show": ""}]
+
+    def write(cf, prompt, index, work, product="", log=print):
+        import os
+        os.makedirs(work, exist_ok=True)
+        with open(os.path.join(work, "shots.json"), "w") as f:
+            json.dump({"shots": shots}, f)
+    monkeypatch.setattr(story, "write", write)
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_run", lambda a, cf=None: seen.update(shots=getattr(a, "shots", None)) or {})
+    cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--voice", "apollo", "--out", "d.mp4"])
+    assert seen["shots"] == shots
+
+
+def test_the_task_keeps_the_briefs_secret_placeholders(tmp_path):
+    """Review: the task was "Sign in as (secret) ...": the value step had nothing real to type."""
+    cf = Writer(json.dumps({"script": "Watch.", "shots": [{"page": "/", "show": ""}, {"task": "sign in", "show": ""}]}))
+    story.write(cf, "Sign in as {{EMAIL}} and show my team the reports", SITE, str(tmp_path), log=lambda m: None)
+    assert "{{EMAIL}}" in story.shots(str(tmp_path))[-1]["task"] and "{{EMAIL}}" not in json.dumps(cf.calls[0]["user"])
+
+
+def test_a_reply_with_thinking_and_prose_still_gives_the_script_and_shots(tmp_path):
+    body = json.dumps({"script": "Watch this.", "shots": [{"page": "/", "show": "home"}]})
+    cf = Writer("<think>plan the demo {first}</think>\nHere's the plan:\n```json\n" + body + "\n```\nHope it helps.")
+    story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert (tmp_path / "story.txt").read_text() == "Watch this.\n"

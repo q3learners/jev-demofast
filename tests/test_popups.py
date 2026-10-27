@@ -79,3 +79,25 @@ def test_a_closer_that_would_change_data_is_not_used():
     """A cookie banner's "Save preferences" changes settings: never the way to clear the page (dry runs included)."""
     s, cf = PopupSession([el(1, "button", "Save preferences")], close_label="Save preferences"), Cf("Save preferences")
     assert popups.clear_popups(cf, s, log=lambda m: None) is None and s.acted == []
+
+
+def test_a_first_visit_popup_that_arrives_late_is_waited_for_and_cleared(monkeypatch):
+    """Cloud and local: Allbirds' pop-up arrived 3-5 s after load, after a fixed 3 s wait, and opened the video."""
+    monkeypatch.setattr(popups, "FIRST_POPUP_WAIT_S", 5.0)  # tests turn the wait off by default (conftest)
+    s = PopupSession([el(1, "button", "Close")], escape_clears=True)
+    s.covered, polls = False, {"n": 0}
+
+    def tick(seconds):
+        polls["n"] += 1
+        if polls["n"] == 7:  # appears 3.5 s in
+            s.covered = True
+    assert popups.first_screen(None, s, log=lambda m: None, sleep=tick) is True
+    assert not s.covered and s.keys == ["Escape"]
+
+
+def test_a_page_without_a_popup_waits_its_limit_and_presses_nothing(monkeypatch):
+    monkeypatch.setattr(popups, "FIRST_POPUP_WAIT_S", 5.0)
+    s = PopupSession([el(1, "link", "Men")])
+    s.covered, polls = False, []
+    assert popups.first_screen(None, s, log=lambda m: None, sleep=polls.append) is False
+    assert sum(polls) <= popups.FIRST_POPUP_WAIT_S + 0.01 and s.keys == []

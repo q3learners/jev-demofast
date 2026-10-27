@@ -1,4 +1,7 @@
-"""Frames (and optional narration clips) → MP4, optionally a GIF.
+"""Frames (and optional narration) → MP4, optionally a GIF.
+
+With a one-take voice-over (take_dir), the video follows the voice: render/timeline.py fits each segment's footage to
+the speech between its marker and the next.
 
 Port of our earlier demo kit's assemble.py (same frames.json contract). Each narration clip NN plays over segment NN; a segment whose clip
 runs longer than its footage holds its first frame longer, so no sentence is cut off. Long waits are trimmed.
@@ -7,6 +10,8 @@ import glob
 import json
 import os
 import subprocess
+
+from . import timeline
 
 LEAD, TAIL = 0.35, 0.6  # seconds of quiet before and after each narration line
 PENDING_FRAMES_KEPT = 3
@@ -76,7 +81,34 @@ def clip_files(folder):
     return sorted(glob.glob(os.path.join(folder, "[0-9][0-9].mp3")) + glob.glob(os.path.join(folder, "[0-9][0-9].aiff")))
 
 
-def assemble(work, output, clips_dir=None, gif=False, music=None, log=print):
+def on_voice_timeline(segs, take_dir, audio_dir):
+    """The founder's one-take voice-over cut at each marker; each segment's footage fitted to its stretch of speech
+    (render/timeline.py). Returns the padded audio pieces, one per segment."""
+    with open(os.path.join(take_dir, "take.json")) as f:
+        take = json.load(f)
+    starts = [take["starts"][name] for name, _ in segs]
+    plan = timeline.plan([sum(f["hold"] for f in seg) for _, seg in segs], starts, take["duration"])
+    padded = []
+    for n, ((name, seg), p) in enumerate(zip(segs, plan)):
+        for frame in seg:
+            frame["hold"] *= p["scale"]
+        stretch(seg, p["video"])
+        lead = LEAD if n == 0 else 0.0  # a beat of the opening screen before the first word
+        seg[0]["hold"] += lead
+        total = sum(f["hold"] for f in seg)
+        wav = os.path.join(audio_dir, f"s{n:02d}.wav")
+        end = starts[n + 1] if n + 1 < len(starts) else None
+        if end is not None and end - starts[n] < 0.01:  # a quick step with no words of its own: its pause only
+            silence(wav, total)
+        else:
+            cut = ["-ss", f"{starts[n]:.3f}"] + (["-to", f"{end:.3f}"] if end is not None else [])
+            ffmpeg(*cut, "-i", os.path.join(take_dir, "take.mp3"), "-af",
+                   f"adelay={int(lead * 1000)}:all=1,apad,atrim=0:{total:.3f},aresample=48000", "-ac", "2", wav)
+        padded.append(wav)
+    return padded
+
+
+def assemble(work, output, clips_dir=None, gif=False, music=None, take_dir=None, log=print):
     work, output = os.path.abspath(work), os.path.abspath(output)
     with open(os.path.join(work, "frames.json")) as f:
         segs = segments(json.load(f))
@@ -86,8 +118,10 @@ def assemble(work, output, clips_dir=None, gif=False, music=None, log=print):
     concat, padded = [], []
     audio_dir = os.path.join(work, "audio")
     os.makedirs(audio_dir, exist_ok=True)
+    if take_dir:
+        padded = on_voice_timeline(segs, take_dir, audio_dir)
     for n, (name, seg) in enumerate(segs):
-        if clips:
+        if clips and not take_dir:
             need = LEAD + media_length(clips[n]) + TAIL
             stretch(seg, need)
             total = sum(f["hold"] for f in seg)

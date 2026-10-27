@@ -5,6 +5,7 @@ A block is reported, never worked around. A pop-up is cleared the way a person w
 frame) hid the whole page from the tool and closed on Escape; Allbirds' didn't, but its close button was visible.
 """
 import re
+import time
 
 from ..browser.elements import describe
 from .guards import blocked, on_site, would_change
@@ -87,3 +88,20 @@ def clear_popups(cf, s, log=print):
         return None
     log(f"pop-up: closed with {e['label'][:30]!r} ({conf:.2f})")
     return f"close: {e['label']}"
+
+
+FIRST_POPUP_WAIT_S, FIRST_POPUP_EVERY_S = 5.0, 0.5
+
+
+def first_screen(cf, s, log=print, sleep=None):
+    """Before a demo's opening frame: watch for a first-visit pop-up for up to 5 s and clear it when it appears.
+    Allbirds' arrived 3-5 s after load, after a fixed 3 s wait, and opened the video. True if one was cleared."""
+    sleep = sleep or time.sleep
+    waited = 0.0
+    while waited < FIRST_POPUP_WAIT_S:
+        if covered(s):
+            clear_popups(cf, s, log)
+            return True
+        sleep(FIRST_POPUP_EVERY_S)
+        waited += FIRST_POPUP_EVERY_S
+    return False

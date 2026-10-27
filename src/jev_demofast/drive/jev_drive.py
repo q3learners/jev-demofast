@@ -16,8 +16,8 @@ from .check import goal_reached
 from .filters import apply_filters, url_agrees
 from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, stop_if_dry_run
 from .menus import LEFT_SITE, describe_menu, menu_options, open_menu
-from .popups import clear_popups
-from .showcase import showcase
+from .popups import clear_popups, covered, first_screen
+from .showcase import reveal_results, showcase
 from .session import Session, StalePage, fingerprint
 
 CONFIDENT = 0.5
@@ -36,90 +36,18 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     rec.dry_run = dry_run
     log = rec.tee(log)
     result = {"goal": goal, "verified": False, "dry_run": dry_run}
-    tried, filled, decisions, history = set(), set(), 0, []
-    explored, expected = "_site" in index, []  # an explored map: screenshot check, filters, a showcase ending
-    why = "it ran out of steps"  # what the narration says if the goal isn't reached
+    decisions = [0]
     try:
+        # The opening frame is the product, never a marketing pop-up ("Unlock 10% Off" opened two videos): watch for a
+        # first-visit pop-up and clear it, and retake the frame if one lands just as it's taken.
+        first_screen(cf, s, log)
         rec.snap(1.5)
-        rec.commit({"do": "open"}, s.page)
-        while decisions < max_steps:
-            decisions += 1
-            clear_popups(cf, s, log)  # marketing pop-ups open on timers, on any screen
-            page = s.page
-            path = urlparse(page["url"]).path
-            route = route_for(path, index)
-            els = s.elements()
-            fields = [e for e in els if "fill" in e["actions"]]
-            state = {"goal": goal, "screen": {"url": path, "title": page.get("title", ""),
-                                              "from_code": summary(route, index),
-                                              "visible_fields": [e["label"][:40] for e in fields][:8],
-                                              "visible_text": " ".join((page.get("text") or "").split())[:600]}}
-            mode, conf = cf.choose("Given the goal, what should happen on this screen?", {
-                "done": "the goal is already accomplished; this screen confirms it",
-                "act_here": "the form or control that accomplishes the goal is on this screen: fill it and submit",
-                "navigate": "the goal is accomplished on a different screen: go there"}, state)
-            if mode == "act_here" and conf < CONFIDENT:
-                mode = "navigate"  # calibrated confidence: act on a form only when Jev is sure it's the right one
-            log(f"{ms():>6} ms  [{path}] Jev: {mode} ({conf:.2f})")
-            entry = index.get(route or "", {})
-            filterable = explored and entry.get("kind") == "listing" and entry.get("filters") and path not in filled
-            if explored and mode == "done":
-                ok, score = _explored_verdict(cf, goal, s, expected)
-                if ok or not filterable:
-                    log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: the screen shows the goal? {score:.2f}")
-                    result["verified"] = ok
-                    if ok:
-                        showcase(cf, s, rec, goal, log)
-                    why = "the screen didn't show the goal accomplished"
-                    break
-                mode = "act_here"  # Jev thought this listing was enough, but it isn't filtered as the goal asks yet
-            if mode == "act_here" and filterable:
-                unavailable = []
-                expected = apply_filters(cf, s, rec, goal, entry, log, unavailable=unavailable)
-                filled.add(path)
-                rec.note_unavailable(unavailable)
-                if expected is None:
-                    log(f"GUARD: left {s.host}; stopped")
-                    why = f"a click led away from {s.host}"
-                    break
-                ok, score = _explored_verdict(cf, goal, s, expected)
-                log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: filtered listing shows the goal? {score:.2f}"
-                    f"{'' if url_agrees(s.page['url'], expected) else ' (the URL lacks the filters)'}")
-                result["verified"] = ok
-                if ok:
-                    showcase(cf, s, rec, goal, log)
-                why = ("the site has no results for " + " and ".join(unavailable) + " with the other filters"
-                       if unavailable else "the filtered listing didn't show what the goal asks for")
-                break
-            if mode == "done":
-                # "done" counts only if the screen itself confirms it: after a refused invite, Jev once chose "done"
-                # (0.70) on a page saying "User is already a member of this team" while the page check said 0.25.
-                result["verified"] = confirmed(cf, goal, page)
-                if not result["verified"]:
-                    log(f"{ms():>6} ms  NOT CONFIRMED: the screen doesn't show the goal accomplished; stopping")
-                    why = "the screen didn't show the goal accomplished"
-                break
-            if mode == "act_here" and fields and path not in filled and explored:
-                # An explored map never verifies through the text check: a search box's results page reading "results
-                # for running shoes under $100" fooled it. The form goes through the screenshot check like the rest.
-                _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms, need_values=True)
-                filled.add(path)
-                ok, score = _explored_verdict(cf, goal, s, expected)
-                log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: the screen shows the goal? {score:.2f}")
-                if ok:
-                    result["verified"] = True
-                    showcase(cf, s, rec, goal, log)
-                    break
-                continue
-            if mode == "act_here" and fields and path not in filled:
-                if _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
-                    result["verified"] = True
-                    break
-                filled.add(path)
-                continue
-            if not _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, log, ms):
-                why = "it found no way to the screen where the goal is done"
-                break
+        if covered(s):
+            clear_popups(cf, s, log)
+            rec.discard()
+            rec.snap(1.5)
+        rec.commit({"do": "open"}, s.observe())
+        result["verified"], why = drive_goal(cf, s, rec, goal, index, max_steps, log, ms, decisions)
         if not result["verified"]:
             rec.unconfirmed(why)
     except DryRunStop as stop:
@@ -128,11 +56,100 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     finally:
         rec.save(goal, cf.decisions)
         s.close()
-    result.update(seconds=round(time.perf_counter() - t0, 1), decisions=decisions, **cf.stats)
-    log(f"done in {result['seconds']} s | {decisions} decisions | Jev {cf.stats['jev_calls']} calls, "
+    result.update(seconds=round(time.perf_counter() - t0, 1), decisions=decisions[0], **cf.stats)
+    log(f"done in {result['seconds']} s | {decisions[0]} decisions | Jev {cf.stats['jev_calls']} calls, "
         f"{cf.stats['jev_seconds']:.1f} s")
     return result
 
+
+def drive_goal(cf, s, rec, goal, index, max_steps, log, ms, steps=None):
+    """From the screen the session is on, drive to the goal: done, act here, or navigate, screen by screen. Returns
+    (verified, why not); `steps` (a one-item list) counts the decisions, even when a dry run stops it."""
+    steps = steps if steps is not None else [0]
+    verified = False
+    tried, filled, history = set(), set(), []
+    explored, expected = "_site" in index, []  # an explored map: screenshot check, filters, a showcase ending
+    why = "it ran out of steps"  # what the narration says if the goal isn't reached
+    while steps[0] < max_steps:
+        steps[0] += 1
+        clear_popups(cf, s, log)  # marketing pop-ups open on timers, on any screen
+        page = s.page
+        path = urlparse(page["url"]).path
+        route = route_for(path, index)
+        els = s.elements()
+        fields = [e for e in els if "fill" in e["actions"]]
+        state = {"goal": goal, "screen": {"url": path, "title": page.get("title", ""),
+                                          "from_code": summary(route, index),
+                                          "visible_fields": [e["label"][:40] for e in fields][:8],
+                                          "visible_text": " ".join((page.get("text") or "").split())[:600]}}
+        mode, conf = cf.choose("Given the goal, what should happen on this screen?", {
+            "done": "the goal is already accomplished; this screen confirms it",
+            "act_here": "the form or control that accomplishes the goal is on this screen: fill it and submit",
+            "navigate": "the goal is accomplished on a different screen: go there"}, state)
+        if mode == "act_here" and conf < CONFIDENT:
+            mode = "navigate"  # calibrated confidence: act on a form only when Jev is sure it's the right one
+        log(f"{ms():>6} ms  [{path}] Jev: {mode} ({conf:.2f})")
+        entry = index.get(route or "", {})
+        filterable = explored and entry.get("kind") == "listing" and entry.get("filters") and path not in filled
+        if explored and mode == "done":
+            ok, score = _explored_verdict(cf, goal, s, expected)
+            if ok or not filterable:
+                log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: the screen shows the goal? {score:.2f}")
+                verified = ok
+                if ok:
+                    showcase(cf, s, rec, goal, log)
+                why = "the screen didn't show the goal accomplished"
+                break
+            mode = "act_here"  # Jev thought this listing was enough, but it isn't filtered as the goal asks yet
+        if mode == "act_here" and filterable:
+            unavailable = []
+            expected = apply_filters(cf, s, rec, goal, entry, log, unavailable=unavailable)
+            filled.add(path)
+            rec.note_unavailable(unavailable)
+            if expected is None:
+                log(f"GUARD: left {s.host}; stopped")
+                why = f"a click led away from {s.host}"
+                break
+            reveal_results(s)  # the check looks at the results, not the panel still open over them
+            ok, score = _explored_verdict(cf, goal, s, expected)
+            log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: filtered listing shows the goal? {score:.2f}"
+                f"{'' if url_agrees(s.page['url'], expected) else ' (the URL lacks the filters)'}")
+            verified = ok
+            if ok:
+                showcase(cf, s, rec, goal, log)
+            why = ("the site has no results for " + " and ".join(unavailable) + " with the other filters"
+                   if unavailable else "the filtered listing didn't show what the goal asks for")
+            break
+        if mode == "done":
+            # "done" counts only if the screen itself confirms it: after a refused invite, Jev once chose "done"
+            # (0.70) on a page saying "User is already a member of this team" while the page check said 0.25.
+            verified = confirmed(cf, goal, page)
+            if not verified:
+                log(f"{ms():>6} ms  NOT CONFIRMED: the screen doesn't show the goal accomplished; stopping")
+                why = "the screen didn't show the goal accomplished"
+            break
+        if mode == "act_here" and fields and path not in filled and explored:
+            # An explored map never verifies through the text check: a search box's results page reading "results
+            # for running shoes under $100" fooled it. The form goes through the screenshot check like the rest.
+            _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms, need_values=True)
+            filled.add(path)
+            ok, score = _explored_verdict(cf, goal, s, expected)
+            log(f"{ms():>6} ms  {'VERIFIED' if ok else 'NOT REACHED'}: the screen shows the goal? {score:.2f}")
+            if ok:
+                verified = True
+                showcase(cf, s, rec, goal, log)
+                break
+            continue
+        if mode == "act_here" and fields and path not in filled:
+            if _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms):
+                verified = True
+                break
+            filled.add(path)
+            continue
+        if not _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, log, ms):
+            why = "it found no way to the screen where the goal is done"
+            break
+    return verified, why
 
 def _fill_and_submit(cf, s, rec, goal, fields, state, history, log, ms, need_values=False):
     """Fill the fields the goal gives values for, submit, settle, and ask Jev whether it's done."""
@@ -281,27 +298,39 @@ def _navigate(cf, s, rec, goal, index, route, path, els, state, tried, history, 
         if item:
             history.append(f"opened the {e['label'][:30]} menu and clicked '{item[:40]}' on {path}")
         return True
+    before = fingerprint(s.observe())
+    page = click_on_camera(s, rec, e, {"do": "click", "target": e["label"]})
+    if page is None:
+        return True
+    if page is LEFT_SITE:
+        log(f"GUARD: left {s.host}; stopped")
+        return False
+    history.append(f"clicked '{e['label'][:40]}' on {path}")
+    log(f"{ms():>6} ms    click {e['label'][:34]!r} {where[:70]} ({conf:.2f})"
+        f"{'' if fingerprint(page) != before else '  [no change]'}")
+    return True
+
+
+def click_on_camera(s, rec, e, action):
+    """Click `e` with the viewer watching: outlined, clicked, the next screen settled, then kept as one segment with
+    `action`. Returns the new page; None if the page changed under the click (nothing kept); LEFT_SITE if the click
+    led off the site (nothing kept). A dry run stops before a click that would change data."""
     _stop_if_dry_run(rec, e, s)
     rec.snap(1.2, node=e["node"])
-    before = fingerprint(s.observe())
     try:
         s.act(e, "click")
     except StalePage:
         rec.discard()
         s.observe()
-        return True
+        return None
     s.wait_for_page()
     page = s.observe()
     rec.snap(0.8)
     if not on_site(page["url"], s.host):
-        log(f"GUARD: left {s.host}; stopped")
         rec.discard()
-        return False
-    rec.commit({"do": "click", "target": e["label"]}, page)
-    history.append(f"clicked '{e['label'][:40]}' on {path}")
-    log(f"{ms():>6} ms    click {e['label'][:34]!r} {where[:70]} ({conf:.2f})"
-        f"{'' if fingerprint(page) != before else '  [no change]'}")
-    return True
+        return LEFT_SITE
+    rec.commit(action, page)
+    return page
 
 
 _stop_if_dry_run = stop_if_dry_run

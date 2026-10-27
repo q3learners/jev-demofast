@@ -18,6 +18,12 @@ from browser_harness.helpers import cdp
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text()
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
 
+# browser-harness waits 5 s for any answer. Page.navigate answers only once the next page starts arriving, and the
+# cloud's headless Chrome took longer than that on tutorq.ai, which loads in under a second on a Mac.
+PAGE_LOAD_TIMEOUT_S = 30
+PAGE_LOADS = ("Page.navigate", "Page.reload")
+
+
 class StalePage(ValueError):
     """A decision no longer refers to the observed page."""
 
@@ -29,7 +35,10 @@ class Browser:
         # demos see (a pop-up closed while exploring would never appear in a demo).
         self.context = cdp("Target.createBrowserContext")["browserContextId"] if isolated else None
         target = {"browserContextId": self.context} if self.context else {}
-        self.target = cdp("Target.createTarget", url="about:blank", background=True, **target)["targetId"]
+        # In your Chrome the tab opens in the background, never taking over your window. Headless Chrome (the hosted
+        # service) has no one watching, and a background tab there took ~2 s per screenshot against ~0.1 s in front.
+        headless = "HeadlessChrome" in cdp("Browser.getVersion").get("userAgent", "")  # not in "product" any more
+        self.target = cdp("Target.createTarget", url="about:blank", background=not headless, **target)["targetId"]
         self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
         self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
         # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.
@@ -42,6 +51,8 @@ class Browser:
             time.sleep(0.02)
 
     def call(self, method, **params):
+        if method in PAGE_LOADS:
+            params["_response_timeout"] = PAGE_LOAD_TIMEOUT_S
         return cdp(method, session_id=self.session, **params)
 
     def evaluate(self, expression, await_promise=False):

@@ -109,8 +109,13 @@ def cmd_explore(a):
 def cmd_run(a, cf=None):
     cf = cf or _cf(a)
     if a.index:
-        from .drive import jev_drive
+        from .drive import jev_drive, tour
         from .index import load as load_index
+        shots = getattr(a, "shots", None) or []  # only the list this demo just wrote, never one left in the work dir
+        if shots:  # the founder's shot list: every screen the script speaks about, then the task if there is one
+            return tour.run(cf, a.url, shots, load_index(a.index), out=a.work, fresh=a.fresh, dry_run=a.dry_run)
+        if getattr(a, "voice", None):
+            print("no shot list: recording the goal only")
         return jev_drive.run(cf, a.url, a.goal, load_index(a.index), out=a.work, fresh=a.fresh,
                              blur_typed=not a.no_blur, dry_run=a.dry_run)
     from .drive import navigator
@@ -120,14 +125,19 @@ def cmd_run(a, cf=None):
 
 
 def cmd_narrate(a, cf=None):
-    """Script → voice → camera-follow → narrated MP4, from a run recorded with page maps."""
+    """Script → voice → narrated MP4. With an ElevenLabs voice and the founder's voice-over: one take, and the video
+    follows the voice. Otherwise one clip per line, with camera-follow on runs recorded with page maps."""
     cf = cf or _cf(a)
-    from .narrate import focus, script, voice
-    from .render.assemble import assemble
+    from .narrate import eleven, focus, script, voice
+    from .render import assemble as assemble_mod
     path = script.write(cf, a.work, product=a.product)
-    clips = voice.generate(cf, path, os.path.join(a.work, "voice"), speaker=a.voice, speed=a.voice_speed)
+    voice_dir = os.path.join(a.work, "voice")
+    if eleven.speaks(cf.s, a.voice) and os.path.exists(os.path.join(a.work, "voiceover.txt")):
+        voice.one_take(eleven.ElevenLabs(cf.s.eleven_key, cf.s.eleven_model), a.work, voice_dir, a.voice)
+        return assemble_mod.assemble(a.work, a.out, take_dir=voice_dir, gif=a.gif, music=getattr(a, "music", None))
+    clips = voice.generate(cf, path, voice_dir, speaker=a.voice, speed=a.voice_speed)
     focused = focus.follow(cf, a.work, path, clips, os.path.join(a.work, "focused"))
-    return assemble(focused, a.out, clips_dir=clips, gif=a.gif, music=getattr(a, "music", None))
+    return assemble_mod.assemble(focused, a.out, clips_dir=clips, gif=a.gif, music=getattr(a, "music", None))
 
 
 def cmd_render(a):
@@ -151,6 +161,12 @@ def site_map(a, cf):
         if site["blocked"]:
             path.unlink(missing_ok=True)
             raise _blocked(site)
+        from .index import load as load_index
+        from .narrate import story
+        if story.knows_nothing(load_index(str(path))):
+            path.unlink(missing_ok=True)
+            raise SystemExit(f"stopped: nothing readable on {host} (no menus, no listings, no text: a site drawn on "
+                             "a canvas, like a Flutter app, can't be mapped), so there is nothing true to say about it")
     return str(path)
 
 
@@ -165,6 +181,7 @@ def cmd_demo(a):
         from .index import load as load_index
         from .narrate import story
         story.write(cf, a.prompt, load_index(a.index), a.work, product=a.product)
+        a.shots = story.shots(a.work)
     result = cmd_run(a, cf)
     if a.voice:
         cmd_narrate(a, cf)  # camera-follow uses page maps where the run has them (navigator); otherwise frames as shot
@@ -229,7 +246,8 @@ def main(argv=None):
     d.add_argument("--out", default="demo.mp4")
     d.add_argument("--work", help="folder for frames (default: <out>.run)")
     d.add_argument("--gif", action="store_true")
-    d.add_argument("--voice", help="narrate with this Aura-2 voice, e.g. apollo or thalia")
+    d.add_argument("--voice", help="narrate with this voice: chris, eric, will, sarah or jessica (ElevenLabs, one take; "
+                                   "needs ELEVENLABS_API_KEY), or a Deepgram Aura-2 voice such as apollo or thalia")
     d.add_argument("--voice-speed", type=float, default=1.0, help="speak faster or slower, same pitch (e.g. 1.2)")
     d.add_argument("--product", default="", help="one line about the product, for narration")
     d.add_argument("--music", metavar="FILE", help="background music (a track you have the rights to); ducked under the voice")

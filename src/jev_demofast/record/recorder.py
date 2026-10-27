@@ -136,7 +136,7 @@ class Recorder:
             print(f"  (no page map for segment {segment}: {error})")
             return {}
 
-    def save(self, goal, decisions=()):
+    def save(self, goal, decisions=(), skipped=()):
         if not self.out:
             return
         with open(os.path.join(self.out, "replay.json"), "w") as f:  # everything a replay/inspector page needs
@@ -146,5 +146,6 @@ class Recorder:
         with open(os.path.join(self.out, "frames.json"), "w") as f:
             json.dump(self.frames, f, indent=1)
         with open(os.path.join(self.out, "actions.json"), "w") as f:
-            json.dump({"goal": goal, "actions": self.actions}, f, indent=1)
+            json.dump({"goal": goal, "actions": self.actions, **({"skipped": list(skipped)} if skipped else {})}, f,
+                      indent=1)
         print(f"recorded {len(self.frames)} frames in {len(self.actions)} segments → {self.out}")
