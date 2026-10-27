@@ -181,3 +181,35 @@ def test_an_empty_map_knows_nothing_and_a_page_with_text_knows_something():
     assert story.knows_nothing({"_site": {"menus": []}, "/": {"kind": "page", "texts": []}})
     assert not story.knows_nothing({"_site": {"menus": []}, "/": {"kind": "page", "texts": ["A tutor for every subject"]}})
     assert not story.knows_nothing(SITE)
+
+
+# --- the shot list comes with the script ------------------------------------------------------------------------
+
+def test_the_script_comes_with_shots_from_the_map(tmp_path):
+    from test_shot_list import MAP as TUTORQ
+    cf = Writer(json.dumps({"script": "Every learner hits a wall.",
+                            "shots": [{"page": "/k12", "show": "K-12"}, {"page": "/pricing", "show": "x"}]}))
+    story.write(cf, "Show parents how TutorQ works", TUTORQ, str(tmp_path), log=lambda m: None)
+    assert (tmp_path / "story.txt").read_text() == "Every learner hits a wall.\n"
+    assert story.shots(str(tmp_path)) == [{"page": "/", "show": ""}, {"page": "/k12", "show": "K-12"}]
+    pages = cf.calls[0]["user"]["what_we_know"]["pages"]
+    assert "/k12" in pages and "/grader/login" not in pages
+
+
+def test_a_reply_that_is_not_json_is_the_script_with_no_shots(tmp_path):
+    story.write(Writer("Just a spoken script."), PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert (tmp_path / "story.txt").read_text() == "Just a spoken script.\n" and story.shots(str(tmp_path)) == []
+    fenced = "```json\n" + json.dumps({"script": "Fenced.", "shots": [{"page": "/", "show": "home"}]}) + "\n```"
+    story.write(Writer(fenced), PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert (tmp_path / "story.txt").read_text() == "Fenced.\n"
+
+
+def test_the_prompt_has_no_shop_shape():
+    from jev_demofast.narrate.shots import MAX_SHOTS
+    assert "the menu; the listing" not in story.SYSTEM and '"shots"' in story.SYSTEM
+    assert str(MAX_SHOTS) in story.SYSTEM.format(sample="", max_shots=MAX_SHOTS)
+
+
+def test_pattern_routes_without_examples_are_not_offered():
+    from jev_demofast.narrate.shots import offerable
+    assert "/collections/:handle" not in offerable(SITE)

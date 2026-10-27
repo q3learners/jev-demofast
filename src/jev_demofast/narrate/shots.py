@@ -18,7 +18,7 @@ def offerable(index):
         texts = entry.get("texts") or []
         if route.startswith("_") or not texts or STATUS_LINE.match(texts[0]):
             continue
-        for path in entry.get("examples") or [route]:
+        for path in entry.get("examples") or ([] if ":" in route else [route]):
             pages[path] = texts[:TEXTS]
     return pages
 

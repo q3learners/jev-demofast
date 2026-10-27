@@ -9,26 +9,33 @@ import os
 import re
 from urllib.parse import urlparse
 
-from ..index import summary
+from . import shots as shots_mod
 
-SYSTEM = """You are the founder of the product on this website. You are planning the voice-over for a screen-recorded demo, and
-the brief says who will watch it and what they should come away believing. You get the brief and what we know about
-the product: its menus and what they hold, its listings and the filters on them, and what the home page says.
+SYSTEM = """You are the founder of the product on this website. You are planning a screen-recorded demo of it: what
+you will say, and the screens you will show while you say it. The brief says who will watch and what they should come
+away believing. You get the brief and what we know about the product: its pages (each with what it says), its menus
+and what they hold, and its listings with the filters on them.
 
-Write the voice-over you will speak, as one flowing script in plain text: no headings, no bullet points, no stage
-directions, no markdown. 60-100 words: about one sentence for each moment of the demo: the promise, said over the home page;
-the menu; the listing; each filter; the results and the payoff, together. The viewer will watch every step on screen, so don't narrate the
-route ("we open the menu, then choose..."); talk about the product while it happens: what's thoughtful about how it's
-organised, what each moment saves the shopper, and why that matters to this audience. Open on the promise or the
-problem in one breath, follow the order the demo will go, and land the payoff. Then stop. Talk only about what the demo will show: the menu, the listing and the filters the brief
-needs; no sorting, tabs or features it won't use.
+Reply with JSON only: {{"script": "...", "shots": [...]}}.
+
+shots are the screens of the demo, in order. The demo always opens on the home page, so start with
+{{"page": "/", "show": "..."}}, then up to {max_shots} more: {{"page": "<a key of pages>", "show": "..."}}, where
+show says in a few words why this screen is in the demo. Pick the pages that tell the brief's story, never pages the
+brief doesn't need. When the brief asks for something the site can do (find a product with a listing's filters,
+fill a form), end with {{"task": "<what to do, in one sentence>", "show": "..."}}; it counts as one of the {max_shots}.
+
+script is the voice-over you will speak over those screens, in their order, as one flowing piece of plain text: no
+headings, no bullet points, no stage directions, no markdown. About 20 words per shot. The viewer will watch every
+screen, so don't narrate the route ("we open the menu, then choose..."); talk about the product while it is on
+screen: what's thoughtful about it, what it saves the viewer, and why that matters to this audience. Open on the
+promise or the problem in one breath, and land the payoff. Then stop.
 
 How you sound:
 - Spoken sentences, each with a subject and a verb. Never captions or instructions.
 - "We" and "our" for the product, "you" for the viewer. Contractions. Warm, confident, specific.
-- Name only menus, pages, features and values that appear in what we know, and never claim what a filter value
-  covers beyond its label. The results aren't known until the demo is recorded: speak about them generally, never with
-  names, counts or prices.
+- Name only pages, menus, features and values that appear in what we know, and never claim what a filter value
+  covers beyond its label. Results of a task aren't known until the demo is recorded: speak about them generally,
+  never with names, counts or prices.
 - You may frame the product against the usual way of doing this ("no hunting through tabs"), but never state a fact
   about a named competitor. Ignore cart counts, banners and shipping notices.
 - Never say "AI", "automation", "agent", "click", "hover", "select", or "segment". Never introduce yourself by name.
@@ -40,7 +47,7 @@ SAMPLE = ("Every team says planning takes too long. Here's how we fixed that. Ev
           "nothing gets lost. Drag the work you want into the week, and we flag what won't fit before you commit. "
           "That's a sprint planned in under a minute.")
 
-MENU_ITEMS, FILTER_VALUES, HOME_TEXTS = 12, 10, 6
+MENU_ITEMS, FILTER_VALUES, HOME_TEXTS, PAGES = 12, 10, 6, 24
 
 
 def context(index):
@@ -57,8 +64,7 @@ def context(index):
             "menus": [{"menu": m["opener"], "holds": [i["label"] for i in m["items"][:MENU_ITEMS]]}
                       for m in site.get("menus", [])],
             "listings": listings,
-            "screens": {route: summary(route, index, 3) for route in list(index)[:12]
-                        if not route.startswith("_") and route != "/" and not index[route].get("filters")}}
+            "pages": dict(list(shots_mod.offerable(index).items())[:PAGES])}
 
 
 def knows_nothing(index):
@@ -70,13 +76,40 @@ def knows_nothing(index):
 
 
 def write(cf, prompt, index, work, product="", log=print):
-    """Write the founder's script to <work>/story.txt and return it. Secrets in the prompt are masked."""
+    """Write the founder's script to <work>/story.txt and its shot list to <work>/shots.json; return the script.
+    Secrets in the prompt are masked. A reply that isn't the asked-for JSON is taken as the script, with no shots."""
     brief = re.sub(r"\{\{\w+\}\}", "(secret)", prompt)
     asked = json.dumps({"brief": brief, "product": product, "what_we_know": context(index)})
-    text = cf.chat(cf.s.script_model, SYSTEM.format(sample=SAMPLE), asked,
-                   cf.s.script_extra).strip()
+    reply = cf.chat(cf.s.script_model, SYSTEM.format(sample=SAMPLE, max_shots=shots_mod.MAX_SHOTS), asked,
+                    cf.s.script_extra).strip()
+    text, raw = _parse(reply)
+    shots = shots_mod.validate(raw, index, log=log)
     os.makedirs(work, exist_ok=True)
     with open(os.path.join(work, "story.txt"), "w") as f:
         f.write(text + "\n")
+    with open(os.path.join(work, "shots.json"), "w") as f:
+        json.dump({"shots": shots}, f, indent=1)
     log(f"founder's script:\n{text}")
+    log("shots: " + (" → ".join(s.get("page") or "task: " + s["task"] for s in shots) or "none"))
     return text
+
+
+def _parse(reply):
+    """(script, shots) from the reply: JSON, possibly in a ``` fence; else the whole reply is the script."""
+    body = re.sub(r"^```(?:json)?\s*|\s*```$", "", reply)
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return reply, []
+    if not isinstance(data, dict) or not str(data.get("script") or "").strip():
+        return reply, []
+    return str(data["script"]).strip(), data.get("shots") or []
+
+
+def shots(work):
+    """The shot list story.write kept for this run; [] when there is none."""
+    path = os.path.join(work, "shots.json")
+    if not os.path.exists(path):
+        return []
+    with open(path) as f:
+        return json.load(f).get("shots") or []
