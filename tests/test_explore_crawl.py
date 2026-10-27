@@ -231,3 +231,31 @@ def test_page_loads_get_longer_than_other_browser_calls(monkeypatch):
     b.call("Runtime.evaluate", expression="1")
     assert asked[0][1]["_response_timeout"] == asked[1][1]["_response_timeout"] == cdp_mod.PAGE_LOAD_TIMEOUT_S == 30
     assert "_response_timeout" not in asked[2][1]
+
+
+def test_a_page_that_draws_its_content_after_loading_is_read_once_it_has(monkeypatch):
+    # q3learners.ai (React): "complete" with an empty <div id="root">; read then, the map was empty and the demo
+    # stopped as if the site were a canvas. Three seconds later it had every heading.
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    session, _ = fake_session(site_pages())
+    real_browser = session.browser
+    polls = []
+
+    def browser(self):
+        b = real_browser.fget(self)
+        evaluate = b.evaluate
+
+        def drawn_late(js, **k):
+            drawn = len(polls) >= 3
+            if js == explore_mod.HAS_CONTENT_JS:
+                polls.append(js)
+                return drawn
+            if js == HEADINGS_JS and not drawn:
+                return []
+            return evaluate(js, **k)
+        b.evaluate = drawn_late
+        return b
+    session.browser = property(browser)
+    m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
+    assert m["/"]["texts"] == ["Welcome"]

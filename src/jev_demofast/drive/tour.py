@@ -1,5 +1,5 @@
 """The tour: the recorder plays the founder's shot list. Each page is reached the way a person would (its link on
-screen, else straight there), shown with a scroll or two, and the brief's task, when there is one, ends the demo.
+screen, else straight there), shown with a glide down it, and the brief's task, when there is one, ends the demo.
 
 Given only a goal, the recorder took the shortest path and stopped: one click to tutorq.ai/sat for a script about
 four products. The shots come from the founder's script (narrate/story.py), checked against the map.
@@ -16,10 +16,14 @@ from .popups import clear_popups, covered, first_screen
 from .session import Session, origin
 from .showcase import showcase
 
-SCROLL_STEPS = 1  # about one screen: the viewer sees past the top banner (two per page made tutorq.ai 89 s long)
+# A page is shown with glides a viewer can follow: a jump between two stills read as a cut, never as a scroll.
+GLIDES = 2            # stops per page: past the banner, then into the page (one "look" moment for the voice-over)
+SCROLL_FRACTION = 0.8  # of a screen, per glide
+GLIDE_FRAMES = 12      # frames per glide, eased: about 0.8 s on screen
+FRAME_S = 1 / 15
+PAUSE_S, HOLD_S = 1.0, 1.5  # on the screen between glides, and after the last
 TASK_STEPS = 12
 CAN_SCROLL = "scrollY + innerHeight < document.documentElement.scrollHeight - 40"
-SCROLL = "window.scrollBy(0, Math.round(innerHeight * 0.8))"
 TO_TOP = "window.scrollTo(0, 0)"
 HEADINGS = ("[...document.querySelectorAll('h1,h2,h3')].filter(h => { const r = h.getBoundingClientRect(); "
             "return r.bottom > 0 && r.top < innerHeight && h.innerText.trim(); })"
@@ -148,14 +152,32 @@ def _leads_to(s, e, page, landed):
     return bool(href) and urlparse(href).hostname == landed and _path(href) == _path(page)
 
 
+def scroll_by(fraction):
+    """One step of a glide; "instant", so a site's own smooth scrolling doesn't land between two frames."""
+    return f"window.scrollBy({{top: Math.round(innerHeight * {fraction:.4f}), behavior: 'instant'}})"
+
+
+def _ease(t):
+    return t * t * (3 - 2 * t)
+
+
+GLIDE = [SCROLL_FRACTION * (_ease(k / GLIDE_FRAMES) - _ease((k - 1) / GLIDE_FRAMES)) for k in range(1, GLIDE_FRAMES + 1)]
+
+
 def _show(s, rec, i, show):
-    """Scroll through the page, a screen at a time, so the viewer sees it; a page that fits on screen isn't moved."""
-    for _ in range(SCROLL_STEPS):
+    """Glide down the page, a screen at a time, so the viewer sees it move; a page that fits on screen isn't moved.
+    The whole of it is one "look" moment, with the headings seen at each stop."""
+    headings, glided = [], 0
+    for g in range(GLIDES):
         if not s.browser.evaluate(CAN_SCROLL):
-            return
-        s.browser.evaluate(SCROLL)
-        s.next_frame()
-        s.wait_for_page()
-        rec.snap(1.5)
-        rec.commit({"do": "look", "shot": i, "show": show, "headings": s.browser.evaluate(HEADINGS) or []},
-                   s.observe())
+            break
+        for step in GLIDE:
+            s.browser.evaluate(scroll_by(step))
+            s.next_frame()
+            rec.snap(FRAME_S)
+        s.wait_for_page()  # lazy images fill in before the held frame
+        rec.snap(HOLD_S if g == GLIDES - 1 else PAUSE_S)
+        headings += [h for h in s.browser.evaluate(HEADINGS) or [] if h not in headings]
+        glided += 1
+    if glided:
+        rec.commit({"do": "look", "shot": i, "show": show, "headings": headings}, s.observe())

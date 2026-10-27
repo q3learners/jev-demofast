@@ -28,7 +28,9 @@ def test_a_task_is_kept_only_as_the_last_shot():
 
 
 def test_shots_are_capped():
-    assert len(validate([{"page": ("/k12", "/sat")[n % 2], "show": str(n)} for n in range(9)], MAP, log=lambda m: None)) == 1 + MAX_SHOTS
+    many = {**MAP, **{f"/p{n}": {"kind": "page", "examples": [f"/p{n}"], "texts": [f"Page {n}"]} for n in range(9)}}
+    shots = validate([{"page": f"/p{n}", "show": str(n)} for n in range(9)], many, log=lambda m: None)
+    assert len(shots) == 1 + MAX_SHOTS
 
 
 def test_nothing_valid_means_no_tour():
@@ -36,11 +38,12 @@ def test_nothing_valid_means_no_tour():
     assert validate("junk", MAP, log=lambda m: None) == []
 
 
-def test_the_same_page_twice_in_a_row_is_one_shot():
-    # Allbirds: "/ → mens-new-arrivals → mens-new-arrivals → mens-new-arrivals → task"
+def test_a_page_is_shown_once():
+    # Allbirds: "/ → mens-new-arrivals → mens-new-arrivals → mens-new-arrivals → task"; q3learners.ai: "/ → /about → /",
+    # the home page played twice
     shots = validate([{"page": "/k12", "show": "a"}, {"page": "/k12", "show": "b"}, {"page": "/sat", "show": "c"},
-                      {"page": "/k12", "show": "d"}], MAP, log=lambda m: None)
-    assert [s["page"] for s in shots] == ["/", "/k12", "/sat", "/k12"]
+                      {"page": "/k12", "show": "d"}, {"page": "/", "show": "e"}], MAP, log=lambda m: None)
+    assert [s["page"] for s in shots] == ["/", "/k12", "/sat"]
 
 
 def test_a_shot_can_ask_for_its_items_to_be_shown():

@@ -42,8 +42,9 @@ def validate(raw, index, log=print):
         if shot.get("page") not in pages:
             log(f"  dropped shot {shot.get('page')}: not a page in the map")
             continue
-        if shot["page"] == (shots[-1] if shots else opening).get("page"):
-            continue  # the same page again is the same screen (Allbirds' list named one listing three times)
+        if shot["page"] in [opening["page"]] + [s.get("page") for s in shots]:
+            continue  # a page already shown is the same screen again (Allbirds named one listing three times;
+            # q3learners.ai went back home at the end)
         shots.append({"page": shot["page"], "show": show, **({"items": True} if shot.get("items") is True else {})})
     task = shots[-1:] if shots and "task" in shots[-1] else []
     shots = [s for s in shots if "task" not in s][:MAX_SHOTS - len(task)] + task

@@ -24,11 +24,23 @@ HEADINGS_JS = r"""[...document.querySelectorAll('h1,h2,h3')].filter(h => {
     const r = h.getBoundingClientRect();
     return r.width > 2 && r.height > 2 && r.right > 0 && r.left < document.documentElement.clientWidth; })
   .map(h => h.innerText.replace(/\s+/g, ' ').trim()).filter(t => t && t.length < 120).slice(0, 10)"""
+# A page built in the browser (React, Vue) is "complete" before it has any content: q3learners.ai read as an empty
+# <div id="root">, and the map was empty. Each page is read once it shows text, or after CONTENT_WAIT_S without.
+HAS_CONTENT_JS = "!!document.body && document.body.innerText.trim().length > 0"
+CONTENT_WAIT_S, CONTENT_POLL_S = 10, 0.25
 EXAMPLES_PER_ROUTE = 2
 LINKS_PER_ROUTE = 80  # as the source-code map caps them
 # Marketing pop-ups open on a timer (Allbirds' a few seconds in); exploring is ahead of time, so the first page gets
 # a one-time settle before menus are looked for. Demos never pause for this: they clear pop-ups on every screen.
 FIRST_PAGE_SETTLE_S = 4
+
+
+def _wait_for_content(s):
+    for _ in range(round(CONTENT_WAIT_S / CONTENT_POLL_S)):
+        if s.browser.evaluate(HAS_CONTENT_JS) is not False:  # drawn, or no answer: read what is there
+            break
+        time.sleep(CONTENT_POLL_S)
+    s.observe()
 
 
 def _read_page(s):
@@ -78,6 +90,7 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
         queue, visited, entries = [], [], {}
 
         def visit(path):
+            _wait_for_content(s)
             how = clear_popups(cf, s, log)
             if how:
                 site["popups"].append({"seen_on": path, "cleared_by": how})
