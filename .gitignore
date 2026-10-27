@@ -12,3 +12,8 @@ out/
 *.run/
 .pytest_cache/
 app-index.json
+
+# Cloudflare deployment
+deploy/cloudflare/node_modules/
+.wrangler/
+deploy/cloudflare/.dev.vars

@@ -14,8 +14,9 @@ COPY src ./src
 RUN uv sync --frozen --no-dev --no-cache
 COPY deploy/cloudflare/container/server.py deploy/cloudflare/container/start.sh ./
 
-RUN useradd --create-home demo && mkdir -p /data/runs && chown -R demo /data
-USER demo
+# Two users: Chrome browses untrusted pages as "chrome" with an empty environment; the job server and the tool run as
+# "demo" with the API keys. start.sh starts as root only to hand each its user.
+RUN useradd --create-home demo && useradd --create-home chrome && mkdir -p /data/runs && chown -R demo /data
 ENV PATH=/app/.venv/bin:$PATH \
     BU_CDP_URL=http://127.0.0.1:9333 \
     BH_TELEMETRY=0 BH_UPDATE_CHECK=0 \

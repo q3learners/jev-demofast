@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 DATA = os.environ.get("JDF_DATA", "/data/runs")
 MAX_SECONDS = int(os.environ.get("JDF_MAX_SECONDS", "600"))
 PROMPT_MAX = 500
+BODY_MAX = 10_000
 VOICE = re.compile(r"^[a-z][a-z-]{1,30}$")
 RUN_ID = re.compile(r"^[0-9a-f]{12}$")
 LOG_TAIL = 80
@@ -145,7 +146,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parts = self.path.strip("/").split("/")
-        if parts == ["health"]:
+        if parts in ([""], ["ping"], ["health"]):  # Cloudflare's start-up check fetches http://ping/
             return self._json(200, {"ok": True})
         if len(parts) >= 2 and parts[0] == "runs":
             st = self.runs.status(parts[1])
@@ -170,7 +171,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.rstrip("/") != "/runs":
             return self._json(404, {"error": "not found"})
         try:
-            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 10_000)) or b"{}")
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            return self._json(400, {"error": "bad Content-Length"})
+        if not 0 <= length <= BODY_MAX:
+            return self._json(413, {"error": f"send at most {BODY_MAX} bytes"})
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             return self._json(400, {"error": "send JSON"})
         url, prompt, voice = str(body.get("url", "")), str(body.get("prompt", "")), str(body.get("voice", "apollo"))

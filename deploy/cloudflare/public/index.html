@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One Cent Demo</title>
+<style>
+  :root {
+    --bg: #f7f6f3; --panel: #ffffff; --ink: #1c1b19; --muted: #6b6862; --line: #e4e1da;
+    --accent: #c2410c; --accent-ink: #ffffff; --ok: #15803d; --bad: #b91c1c; --code: #f1efea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151413; --panel: #1e1d1b; --ink: #f2f0ec; --muted: #a29e96; --line: #33312d;
+            --accent: #f97316; --accent-ink: #151413; --ok: #4ade80; --bad: #f87171; --code: #262522; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 6px; }
+  textarea, input, select { width: 100%; font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  textarea { min-height: 84px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr 160px; gap: 12px; margin-top: 14px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  button { margin-top: 16px; font: inherit; font-weight: 600; background: var(--accent); color: var(--accent-ink);
+    border: 0; border-radius: 8px; padding: 11px 18px; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .error { color: var(--bad); margin-top: 12px; }
+  .steps { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 0; list-style: none; }
+  .steps li { font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .steps li.now { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .steps li.done { color: var(--ink); }
+  .steps li.done::before { content: "✓ "; color: var(--ok); }
+  h2 { font-size: 15px; margin: 18px 0 6px; }
+  .story { white-space: pre-wrap; }
+  ol.lines { margin: 0; padding-left: 22px; }
+  pre { background: var(--code); border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.45;
+    max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0; }
+  video { width: 100%; border-radius: 8px; background: #000; margin-top: 6px; }
+  .verdict.ok { color: var(--ok); font-weight: 600; } .verdict.bad { color: var(--bad); font-weight: 600; }
+  .history a { color: var(--ink); } .history li { margin: 4px 0; } .muted { color: var(--muted); font-size: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>One Cent Demo</h1>
+  <p class="sub">One sentence in. The site is mapped, the founder's script is written, then the demo is recorded and narrated.</p>
+
+  <form class="panel" id="form">
+    <label for="prompt">What should the demo show, and to whom?</label>
+    <textarea id="prompt" required maxlength="500"
+      placeholder="Show my investors how easy it is to find men's running shoes under $150 on our site"></textarea>
+    <div class="row">
+      <div><label for="url">Site</label><input id="url" type="url" required placeholder="https://www.allbirds.com/"></div>
+      <div><label for="voice">Voice</label>
+        <select id="voice"><option value="apollo">Apollo</option><option value="thalia">Thalia</option>
+          <option value="orion">Orion</option><option value="luna">Luna</option></select></div>
+    </div>
+    <button id="go" type="submit">Make the demo</button>
+    <div class="error" id="formError" hidden></div>
+  </form>
+
+  <section class="panel" id="run" hidden>
+    <ul class="steps" id="steps"></ul>
+    <div id="verdict" class="verdict"></div>
+    <div id="videoBox" hidden><video id="video" controls playsinline></video>
+      <p><a id="download" download>Download the MP4</a></p></div>
+    <div id="storyBox" hidden><h2>The founder's script</h2><div class="story" id="story"></div></div>
+    <div id="linesBox" hidden><h2>Spoken over the video</h2><ol class="lines" id="lines"></ol></div>
+    <h2>Log</h2><pre id="log"></pre>
+  </section>
+
+  <section class="panel history"><h2 style="margin-top:0">Recent demos</h2><ul id="history" class="muted"><li>Loading…</li></ul></section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const STEPS = [
+  ["start", "Starting", () => true],
+  ["explore", "Mapping the site", (log) => /exploring|explored|no map/.test(log)],
+  ["script", "Founder's script", (log) => /founder's script/.test(log)],
+  ["record", "Recording", (log) => /\d+ ms\s+\[/.test(log)],
+  ["narrate", "Narrating", (log) => /^voice:/m.test(log)],
+  ["render", "Video", (log) => /^video /m.test(log)],
+];
+let timer = null;
+
+function showSteps(run) {
+  const log = (run.log || []).join("\n");
+  const reached = STEPS.filter(([, , seen]) => seen(log)).length;
+  $("steps").innerHTML = STEPS.map(([key, label], i) => {
+    const cls = run.status === "running" ? (i < reached - 1 ? "done" : i === reached - 1 ? "now" : "")
+      : (i < reached ? "done" : "");
+    return `<li class="${cls}">${label}</li>`;
+  }).join("");
+}
+
+function show(run) {
+  $("run").hidden = false;
+  showSteps(run);
+  $("log").textContent = (run.log || []).slice(-40).join("\n");
+  $("log").scrollTop = $("log").scrollHeight;
+  $("storyBox").hidden = !run.story; $("story").textContent = run.story || "";
+  $("linesBox").hidden = !(run.narration || []).length;
+  $("lines").innerHTML = (run.narration || []).map((l) => `<li>${escapeHtml(l)}</li>`).join("");
+  const v = $("verdict");
+  if (run.status === "running") { v.textContent = "Working…"; v.className = "verdict"; }
+  else if (run.status === "done") {
+    v.textContent = run.verified ? "Done: the demo reached the goal." : "Done, but the goal wasn't confirmed on screen.";
+    v.className = "verdict " + (run.verified ? "ok" : "bad");
+  } else { v.textContent = "Stopped: " + (run.error || "the run failed"); v.className = "verdict bad"; }
+  if (run.status !== "running" && run.video) {
+    const src = `/api/runs/${run.id}/video`;
+    if ($("video").getAttribute("src") !== src) { $("video").src = src; $("download").href = src; }
+    $("videoBox").hidden = false;
+  } else { $("videoBox").hidden = true; }
+}
+
+function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+
+async function poll(id, misses = 0) {
+  clearTimeout(timer);
+  try {
+    const r = await fetch(`/api/runs/${id}`);
+    if (r.ok) {
+      const run = await r.json();
+      show(run);
+      if (run.status === "running") timer = setTimeout(() => poll(id), 3000);
+      else { $("go").disabled = false; history(); }
+      return;
+    }
+  } catch {}
+  if (misses < 20) timer = setTimeout(() => poll(id, misses + 1), 4000); // the recorder may be waking up
+}
+
+async function history() {
+  try {
+    const runs = await (await fetch("/api/runs")).json();
+    $("history").innerHTML = runs.length ? runs.map((r) =>
+      `<li><a href="#${r.id}">${escapeHtml(r.prompt || r.id)}</a> <span class="muted">${escapeHtml(new URL(r.url).hostname)}
+       · ${r.status === "done" ? (r.verified ? "verified" : "not confirmed") : r.status}</span></li>`).join("")
+      : "<li>None yet.</li>";
+  } catch { $("history").innerHTML = "<li>Couldn't load.</li>"; }
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("formError").hidden = true;
+  $("go").disabled = true;
+  const body = JSON.stringify({ prompt: $("prompt").value.trim(), url: $("url").value.trim(), voice: $("voice").value });
+  for (let attempt = 0; attempt < 15; attempt++) {
+    $("go").textContent = attempt ? "Waking the recorder…" : "Starting…";
+    let r;
+    try { r = await fetch("/api/runs", { method: "POST", headers: { "content-type": "application/json" }, body }); }
+    catch { r = null; }
+    if (r && (r.status === 202 || r.status === 409)) {
+      const { id, error } = await r.json();
+      $("go").textContent = "Make the demo";
+      if (r.status === 409) { $("formError").textContent = error + " — showing it."; $("formError").hidden = false; }
+      location.hash = id; poll(id); return;
+    }
+    if (r && r.status !== 503) {
+      const { error } = await r.json().catch(() => ({ error: `error ${r.status}` }));
+      $("formError").textContent = error; $("formError").hidden = false; break;
+    }
+    await new Promise((ok) => setTimeout(ok, 4000)); // cold start: the recorder image is starting
+  }
+  $("go").textContent = "Make the demo"; $("go").disabled = false;
+});
+
+window.addEventListener("hashchange", () => location.hash.length > 1 && poll(location.hash.slice(1)));
+if (location.hash.length > 1) poll(location.hash.slice(1));
+history();
+</script>
+</body>
+</html>

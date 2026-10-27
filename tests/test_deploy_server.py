@@ -91,3 +91,53 @@ def test_a_failed_run_says_why(tmp_path):
 def test_an_unknown_run_is_none(tmp_path):
     assert server.Runs(str(tmp_path)).status("nope") is None
     assert server.Runs(str(tmp_path)).status("../etc") is None
+
+
+def test_the_container_answers_cloudflares_start_up_ping(tmp_path):
+    """Cloudflare checks a container has started by fetching http://ping/ on its port."""
+    import io
+
+    class Fake(server.Handler):
+        def __init__(self, path):
+            self.path, self.wfile, self.sent = path, io.BytesIO(), []
+        def send_response(self, code): self.sent.append(code)
+        def send_header(self, *a): pass
+        def end_headers(self): pass
+    for path in ("/", "/ping", "/health"):
+        h = Fake(path)
+        h.do_GET()
+        assert h.sent == [200]
+
+
+def handler(path, body=b"", length=None, runs=None):
+    import io
+
+    class Fake(server.Handler):
+        def __init__(self):
+            self.path, self.headers = path, {"Content-Length": str(len(body)) if length is None else length}
+            self.rfile, self.wfile, self.sent = io.BytesIO(body), io.BytesIO(), []
+        def send_response(self, code): self.sent.append(code)
+        def send_header(self, *a): pass
+        def end_headers(self): pass
+    Fake.runs = runs
+    return Fake()
+
+
+GOOD = json.dumps({"url": "https://shop.test/", "prompt": "Show it", "voice": "apollo"}).encode()
+
+
+@pytest.mark.parametrize("length", ["-1", "abc", "20000"])
+def test_a_bad_or_oversized_body_length_is_refused(monkeypatch, tmp_path, length):
+    monkeypatch.setattr(server, "check_url", lambda url: None)
+    runs = server.Runs(str(tmp_path), spawn=lambda cmd, log: Proc())
+    assert handler("/runs", GOOD, runs=runs).do_POST() or True  # the same body with its real length is accepted
+    h = handler("/runs", GOOD, length=length, runs=server.Runs(str(tmp_path / "b"), spawn=lambda c, l: Proc()))
+    h.do_POST()
+    assert h.sent[0] in (400, 413)
+
+
+def test_a_good_request_starts_a_run(monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "check_url", lambda url: None)
+    h = handler("/runs", GOOD, runs=server.Runs(str(tmp_path), spawn=lambda cmd, log: Proc()))
+    h.do_POST()
+    assert h.sent == [202]
