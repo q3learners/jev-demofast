@@ -7,7 +7,7 @@ from urllib.parse import parse_qsl, urlparse
 
 from ..browser.elements import words
 from .guards import blocked, on_site, stop_if_dry_run
-from .popups import clear_popups
+from .popups import SIGN_UP, clear_popups
 from .session import StalePage
 
 LEFT_SITE = "left the site"
@@ -26,6 +26,14 @@ DISABLED_JS = """[...document.querySelectorAll('input[type=checkbox]:disabled,in
 # Price boxes say "From"/"To" (Shopify's Dawn), "Min"/"Max", or gte/lte in their names.
 LOW = re.compile(r"\b(min(imum)?|from|low(est)?)\b|gte", re.I)
 HIGH = re.compile(r"\b(max(imum)?|to|high(est)?)\b|lte", re.I)
+
+
+def _price_box(e, group):
+    """A box for this range: a number input, or one that names the group. Never a sign-up box: typing into "Subscribe
+    to our emails" and pressing Enter would sign the viewer up."""
+    text = f"{e['label']} {e.get('hint', '')}"
+    return ((e["role"] == "spinbutton" or words(group) <= words(text)) and not SIGN_UP.search(text)
+            and not blocked(e["label"]))
 
 
 def choose_filters(cf, goal, filters, sort=None):
@@ -143,12 +151,11 @@ def apply_filters(cf, s, rec, goal, entry, log=print, unavailable=None):
     for r in choices["ranges"]:
         clear_popups(cf, s, log)
         s.observe()
-        boxes = [e for e in s.elements() if "fill" in e["actions"]]
+        boxes = [e for e in s.elements() if "fill" in e["actions"] and _price_box(e, r["group"])]
         for bound, pattern in (("min", LOW), ("max", HIGH)):
             if not r.get(bound):
                 continue
-            box = next((e for e in boxes if pattern.search(f"{e['label']} {e.get('hint', '')}")
-                        and not blocked(e["label"])), None)
+            box = next((e for e in boxes if pattern.search(f"{e['label']} {e.get('hint', '')}")), None)
             if box is None:
                 log(f"  filter {r['group']}: no {bound} box on screen; skipped")
                 continue

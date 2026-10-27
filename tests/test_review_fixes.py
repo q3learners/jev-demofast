@@ -159,3 +159,20 @@ def test_explore_never_clicks_a_data_changing_top_bar_button():
                                                                                           {"label": "b", "to": "/b"}])})
     explore_menus.discover_menus(s, log=lambda m: None)
     assert s.clicked == []
+
+
+# 9. A newsletter box is never taken for a price box: typing a price into "Subscribe to our emails" and pressing Enter
+# would sign the viewer up.
+def test_a_newsletter_box_is_never_filled_as_a_price_box():
+    class Footer(Listing):
+        def observe(self):
+            page = super().observe()
+            page["actions"] += [{"kind": "fill", "node": 60, "id": "e60", "role": "textbox",
+                                 "label": "Subscribe to our emails"}]
+            return page
+    entry = {"filters": [{"group": "Price", "kind": "range", "param": ["filter.v.price.gte", "filter.v.price.lte"],
+                          "values": []}]}
+    picks = {"checks": [], "ranges": [{"group": "Price", "min": None, "max": "100"}], "sort": None}
+    s = Footer()
+    filters.apply_filters(Cf(picks), s, Rec(), "goal", entry, log=lambda m: None)
+    assert s.events == []
