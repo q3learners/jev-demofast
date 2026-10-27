@@ -152,3 +152,15 @@ def test_the_task_shot_runs_the_goal_loop(monkeypatch):
     result, actions = play([HOME, {"task": "find shoes under $150", "show": "the payoff"}])
     assert actions[-1] == {**actions[-1], "do": "filter", "shot": 1, "show": "the payoff"}
     assert result["verified"] is True and result["goal"] == "find shoes under $150"
+
+
+def test_the_task_starts_from_the_top_of_the_page(monkeypatch):
+    # Allbirds: after the listing's scroll, every filter "isn't on screen"
+    seen = {}
+
+    def drive_goal(cf, s, rec, goal, index, max_steps, log, ms, steps=None):
+        seen["y"] = s.y
+        return True, ""
+    monkeypatch.setattr(tour, "drive_goal", drive_goal)
+    play([HOME, {"page": "/k12", "show": "K-12"}, {"task": "find a tutor", "show": ""}])
+    assert seen["y"] == 0

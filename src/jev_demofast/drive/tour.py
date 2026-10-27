@@ -48,6 +48,7 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
         for i, shot in enumerate(shots[1:], 1):
             clear_popups(cf, s, log)
             if "task" in shot:
+                _to_top(s)  # the task starts where its controls are (Allbirds' filters were scrolled away)
                 before = len(rec.actions)
                 task_ok, why = drive_goal(cf, s, rec, shot["task"], index, TASK_STEPS, log, ms, steps)
                 for action in rec.actions[before:]:
@@ -91,9 +92,7 @@ def _reach(s, rec, page, i, show):
     """Go to the shot's page on camera. Returns why it couldn't, or None once there."""
     if _path(s.page["url"]) == _path(page) and urlparse(s.page["url"]).hostname == s.host:
         return None
-    s.browser.evaluate(TO_TOP)  # the navigation is at the top, where a person would scroll back to
-    s.next_frame()
-    s.observe()
+    _to_top(s)  # the navigation is at the top, where a person would scroll back to
     action = {"shot": i, "show": show}
     link = next((e for e in s.elements() if "click" in e["actions"] and _leads_to(s, e, page)), None)
     try:
@@ -119,6 +118,12 @@ def _reach(s, rec, page, i, show):
         rec.actions[-1]["outcome"] = f"not confirmed: it opened {s.page['url']} instead of {page}"
         return f"it opened {s.page['url']}"
     return None
+
+
+def _to_top(s):
+    s.browser.evaluate(TO_TOP)
+    s.next_frame()
+    s.observe()
 
 
 def _leads_to(s, e, page):
