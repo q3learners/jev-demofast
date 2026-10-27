@@ -156,6 +156,12 @@ def site_map(a, cf):
         if site["blocked"]:
             path.unlink(missing_ok=True)
             raise _blocked(site)
+        from .index import load as load_index
+        from .narrate import story
+        if story.knows_nothing(load_index(str(path))):
+            path.unlink(missing_ok=True)
+            raise SystemExit(f"stopped: nothing readable on {host} (no menus, no listings, no text: a site drawn on "
+                             "a canvas, like a Flutter app, can't be mapped), so there is nothing true to say about it")
     return str(path)
 
 

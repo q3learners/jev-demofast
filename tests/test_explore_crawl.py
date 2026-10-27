@@ -194,3 +194,40 @@ def test_explore_chooses_the_browser_before_the_browser_library_loads():
         "cli.main(['explore', 'https://shop.test/'])\n")
     out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True).stdout
     assert out.strip() == "not loaded"
+
+
+def test_a_page_that_never_loads_is_skipped_and_the_rest_is_mapped(monkeypatch):
+    # In the cloud browser, one move to the next page of tutorq.ai timed out, and the whole map was lost with it.
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    session, _ = fake_session(site_pages())
+    real_browser = session.browser
+
+    def browser(self):
+        b = real_browser.fget(self)
+        call = b.call
+
+        def slow(method, **params):
+            if method == "Page.navigate" and params["url"].endswith("/pages/about"):
+                raise TimeoutError("Page.navigate timed out after 30s waiting for the daemon")
+            return call(method, **params)
+        b.call = slow
+        return b
+    session.browser = property(browser)
+    said = []
+    m = explore("https://shop.test/", cf=None, log=said.append, session=session)
+    assert "/pages/about" not in m and "/collections/:handle" in m
+    assert any("skipped /pages/about" in line for line in said)
+
+
+def test_page_loads_get_longer_than_other_browser_calls(monkeypatch):
+    from jev_demofast.browser import cdp as cdp_mod
+    asked = []
+    monkeypatch.setattr(cdp_mod, "cdp", lambda method, session_id=None, **k: asked.append((method, k)) or {})
+    b = cdp_mod.Browser.__new__(cdp_mod.Browser)
+    b.session = "s"
+    b.call("Page.navigate", url="https://shop.test/")
+    b.call("Page.reload")
+    b.call("Runtime.evaluate", expression="1")
+    assert asked[0][1]["_response_timeout"] == asked[1][1]["_response_timeout"] == cdp_mod.PAGE_LOAD_TIMEOUT_S == 30
+    assert "_response_timeout" not in asked[2][1]

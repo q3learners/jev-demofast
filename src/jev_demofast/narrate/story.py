@@ -61,6 +61,14 @@ def context(index):
                         if not route.startswith("_") and route != "/" and not index[route].get("filters")}}
 
 
+def knows_nothing(index):
+    """True when the map holds nothing to speak about: no menus, no listings, no text on any page. A site drawn on a
+    canvas (Flutter) maps like this, and a script written from it is invented."""
+    known = context(index)
+    return not (known["menus"] or known["listings"] or known["home_page_says"]
+                or any(index[r].get("texts") for r in index if not r.startswith("_")))
+
+
 def write(cf, prompt, index, work, product="", log=print):
     """Write the founder's script to <work>/story.txt and return it. Secrets in the prompt are masked."""
     brief = re.sub(r"\{\{\w+\}\}", "(secret)", prompt)

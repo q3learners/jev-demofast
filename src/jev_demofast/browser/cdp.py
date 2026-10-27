@@ -18,6 +18,12 @@ from browser_harness.helpers import cdp
 READ_STATE = Path(__file__).with_name("snapshot.js").read_text()
 MARKER = f"(() => {{ const state={READ_STATE}; return state?.marker ?? null; }})()"
 
+# browser-harness waits 5 s for any answer. Page.navigate answers only once the next page starts arriving, and the
+# cloud's headless Chrome took longer than that on tutorq.ai, which loads in under a second on a Mac.
+PAGE_LOAD_TIMEOUT_S = 30
+PAGE_LOADS = ("Page.navigate", "Page.reload")
+
+
 class StalePage(ValueError):
     """A decision no longer refers to the observed page."""
 
@@ -45,6 +51,8 @@ class Browser:
             time.sleep(0.02)
 
     def call(self, method, **params):
+        if method in PAGE_LOADS:
+            params["_response_timeout"] = PAGE_LOAD_TIMEOUT_S
         return cdp(method, session_id=self.session, **params)
 
     def evaluate(self, expression, await_promise=False):

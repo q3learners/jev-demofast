@@ -123,7 +123,8 @@ def demo(monkeypatch, tmp_path):
     def explore(url, out=None, **k):
         seen["explored"] += 1
         seen["order"].append("explore")
-        found = {"_site": {"menus": [], "blocked": seen.get("blocked")}, "/": {"kind": "page"}}
+        home = {"kind": "page", "texts": [] if seen.get("empty") else ["Wildly Comfortable. Super Natural."]}
+        found = {"_site": {"menus": [], "blocked": seen.get("blocked")}, "/": home}
         with open(out, "w") as f:
             json.dump(found, f)
         return found
@@ -164,3 +165,19 @@ def test_a_demo_on_a_site_that_blocks_the_tool_stops_before_recording(demo):
     with pytest.raises(SystemExit) as stop:
         cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--out", "d.mp4"])
     assert "blocked: Access Denied" in str(stop.value) and demo["order"] == ["explore"]
+
+
+def test_a_site_with_nothing_readable_stops_before_a_script_is_written(demo, tmp_path):
+    # k12.tutorq.ai draws on a canvas (Flutter): the map had one page and no text, and the script invented a menu,
+    # a listing and filters. No map, no product: stop instead, and keep no cache of the empty map.
+    demo["empty"] = True
+    with pytest.raises(SystemExit) as stop:
+        cli.main(["demo", PROMPT, "--url", "https://k12.shop.test/", "--voice", "apollo", "--out", "d.mp4"])
+    assert str(stop.value).startswith("stopped: nothing readable on k12.shop.test") and demo["order"] == ["explore"]
+    assert not (tmp_path / "maps" / "k12.shop.test.json").exists()
+
+
+def test_an_empty_map_knows_nothing_and_a_page_with_text_knows_something():
+    assert story.knows_nothing({"_site": {"menus": []}, "/": {"kind": "page", "texts": []}})
+    assert not story.knows_nothing({"_site": {"menus": []}, "/": {"kind": "page", "texts": ["A tutor for every subject"]}})
+    assert not story.knows_nothing(SITE)
