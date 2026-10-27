@@ -109,8 +109,14 @@ def cmd_explore(a):
 def cmd_run(a, cf=None):
     cf = cf or _cf(a)
     if a.index:
-        from .drive import jev_drive
+        from .drive import jev_drive, tour
         from .index import load as load_index
+        from .narrate import story
+        shots = story.shots(a.work) if a.work else []
+        if shots:  # the founder's shot list: every screen the script speaks about, then the task if there is one
+            return tour.run(cf, a.url, shots, load_index(a.index), out=a.work, fresh=a.fresh, dry_run=a.dry_run)
+        if getattr(a, "voice", None):
+            print("no shot list: recording the goal only")
         return jev_drive.run(cf, a.url, a.goal, load_index(a.index), out=a.work, fresh=a.fresh,
                              blur_typed=not a.no_blur, dry_run=a.dry_run)
     from .drive import navigator

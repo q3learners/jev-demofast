@@ -213,3 +213,30 @@ def test_the_prompt_has_no_shop_shape():
 def test_pattern_routes_without_examples_are_not_offered():
     from jev_demofast.narrate.shots import offerable
     assert "/collections/:handle" not in offerable(SITE)
+
+
+def _run_args(tmp_path):
+    import argparse
+    (tmp_path / "map.json").write_text(json.dumps(SITE))
+    return argparse.Namespace(index=str(tmp_path / "map.json"), url="https://shop.test/", goal="find shoes",
+                              work=str(tmp_path), fresh=False, no_blur=False, dry_run=False, voice="sarah")
+
+
+def test_a_demo_with_shots_records_the_tour(monkeypatch, tmp_path):
+    from jev_demofast.drive import tour
+    shots = [{"page": "/", "show": ""}, {"task": "find shoes", "show": "payoff"}]
+    (tmp_path / "shots.json").write_text(json.dumps({"shots": shots}))
+    called = []
+    monkeypatch.setattr(tour, "run", lambda cf, url, s, index, **k: called.append(("tour", s)) or {})
+    monkeypatch.setattr(jev_drive, "run", lambda *a, **k: called.append("goal") or {})
+    cli.cmd_run(_run_args(tmp_path), cf="cf")
+    assert called == [("tour", shots)]
+
+
+def test_a_demo_without_shots_records_the_goal(monkeypatch, tmp_path):
+    from jev_demofast.drive import tour
+    called = []
+    monkeypatch.setattr(tour, "run", lambda *a, **k: called.append("tour") or {})
+    monkeypatch.setattr(jev_drive, "run", lambda *a, **k: called.append("goal") or {})
+    cli.cmd_run(_run_args(tmp_path), cf="cf")
+    assert called == ["goal"]
