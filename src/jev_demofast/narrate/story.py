@@ -15,7 +15,8 @@ from . import shots as shots_mod
 SYSTEM = """You are the founder of the product on this website. You are planning a screen-recorded demo of it: what
 you will say, and the screens you will show while you say it. The brief says who will watch and what they should come
 away believing. You get the brief and what we know about the product: its pages (each with what it says), its menus
-and what they hold, and its listings with the filters on them. When there is a readme, it is the product's README
+and what they hold, its listings with the filters on them, and behind_login: pages that need an account, which the
+demo can't show. When there is a readme, it is the product's README
 from its code repository, in the makers' own words: take what the product is, who it's for and why it's different from
 it, but leave out install steps, code and anything for developers unless the brief is for developers.
 
@@ -34,7 +35,9 @@ script is the voice-over you will speak over those screens, in their order, as o
 headings, no bullet points, no stage directions, no markdown. About 20 words per shot. The viewer will watch every
 screen, so don't narrate the route ("we open the menu, then choose..."); talk about the product while it is on
 screen: what's thoughtful about it, what it saves the viewer, and why that matters to this audience. Open on the
-promise or the problem in one breath, and land the payoff. Then stop.
+promise or the problem in one breath, and land the payoff. Then stop. When what the brief cares about is behind_login,
+tour what a visitor can see and land the payoff as what signing up opens ("sign up, and your dashboard..."): say it,
+never describe those screens as if they were on screen, and name only what their paths and the pages we know say.
 
 How you sound:
 - Spoken sentences, each with a subject and a verb. Never captions or instructions.
@@ -56,12 +59,12 @@ SAMPLE = ("Every team says planning takes too long. Here's how we fixed that. Ev
           "nothing gets lost. Drag the work you want into the week, and we flag what won't fit before you commit. "
           "That's a sprint planned in under a minute.")
 
-MENU_ITEMS, FILTER_VALUES, HOME_TEXTS, PAGES = 12, 10, 6, 24
+MENU_ITEMS, FILTER_VALUES, HOME_TEXTS, PAGES, BEHIND_LOGIN = 12, 10, 6, 24, 12
 
 
 def context(index):
     """What the map knows, small enough for one prompt: menus with their items, listings with their filters and values,
-    and the home page's headline texts. Not the routes' links."""
+    the home page's headline texts, and the paths behind a login. Not the routes' links."""
     site = index.get("_site") or {}
     listings = [{"route": route, "shows": e.get("texts", [])[:3],
                  "filters": {f["group"]: f.get("values", [])[:FILTER_VALUES] for f in e["filters"]},
@@ -73,7 +76,8 @@ def context(index):
             "menus": [{"menu": m["opener"], "holds": [i["label"] for i in m["items"][:MENU_ITEMS]]}
                       for m in site.get("menus", [])],
             "listings": listings,
-            "pages": dict(list(shots_mod.offerable(index).items())[:PAGES])}
+            "pages": dict(list(shots_mod.offerable(index).items())[:PAGES]),
+            "behind_login": site.get("behind_login", [])[:BEHIND_LOGIN]}
 
 
 def knows_nothing(index):

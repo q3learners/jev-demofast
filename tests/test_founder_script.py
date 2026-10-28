@@ -334,3 +334,22 @@ def test_the_voice_over_keeps_the_script_over_setup_headings():
     "here's what you need to install", "Start the browser, describe the demo") instead of the founder's script."""
     rules = fit.SYSTEM.lower()
     assert "install" in rules and "tool names" in rules and "carry on with your script" in rules
+
+
+def test_pages_behind_a_login_reach_the_founder_as_what_comes_after_signing_up(tmp_path):
+    """The tour shows only what a visitor can see; the script closes on what an account opens, said, never shown."""
+    walled = {**SITE, "_site": {**SITE["_site"], "behind_login": ["/dashboard", "/portfolio"]}}
+    cf = Writer("Script.")
+    story.write(cf, PROMPT, walled, str(tmp_path), log=lambda m: None)
+    (call,) = cf.calls
+    assert call["user"]["what_we_know"]["behind_login"] == ["/dashboard", "/portfolio"]
+    rule = " ".join(call["system"].split())
+    assert "When what the brief cares about is behind_login" in rule and "what signing up opens" in rule
+    assert "never describe those screens as if they were on screen" in rule
+    assert "/dashboard" not in call["user"]["what_we_know"]["pages"]
+
+
+def test_a_map_from_before_logins_were_noticed_has_nothing_behind_login(tmp_path):
+    cf = Writer("Script.")
+    story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert cf.calls[0]["user"]["what_we_know"]["behind_login"] == []

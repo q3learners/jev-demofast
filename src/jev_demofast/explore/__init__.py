@@ -1,7 +1,8 @@
 """Site explorer: browse a live site once, ahead of time, and write a map demos can drive from.
 
 The map has the source-code map's shape ({route: {file, links, buttons, fields, texts, submits}}) plus, per route,
-kind/filters/sort/examples, and a "_site" record: menus (and how they open), pop-ups, and a bot block if one stopped it.
+kind/filters/sort/examples, and a "_site" record: menus (and how they open), pop-ups, a bot block if one stopped it, and
+the pages behind a login (behind_login), which aren't mapped.
 Exploring only navigates, opens menus and reads; it never submits, signs up or types into a pop-up.
 """
 import json
@@ -28,6 +29,9 @@ HEADINGS_JS = r"""[...document.querySelectorAll('h1,h2,h3')].filter(h => {
 # <div id="root">, and the map was empty. Each page is read once it shows text, or after CONTENT_WAIT_S without.
 HAS_CONTENT_JS = "!!document.body && document.body.innerText.trim().length > 0"
 CONTENT_WAIT_S, CONTENT_POLL_S = 10, 0.25
+# A page behind a login sends a visitor to a sign-in form instead. Mapped, it carried the sign-in page's content, and
+# reafi.ai's demo went to its login page and back. A redirect alone isn't a wall (/about-us → /pages/about).
+SIGN_IN_FORM_JS = "!!document.querySelector('input[type=password]')"
 EXAMPLES_PER_ROUTE = 2
 LINKS_PER_ROUTE = 80  # as the source-code map caps them
 # Marketing pop-ups open on a timer (Allbirds' a few seconds in); exploring is ahead of time, so the first page gets
@@ -51,7 +55,15 @@ def _read_page(s):
             "buttons": [{"label": e["label"][:80], "submit": False} for e in els if e["role"] == "button"
                         and e["label"]][:60],
             "fields": [e["label"][:60] for e in els if "fill" in e["actions"] and e["label"]][:30],
-            "texts": s.browser.evaluate(HEADINGS_JS) or [], **listing}
+            "texts": s.browser.evaluate(HEADINGS_JS) or [], "sign_in": s.browser.evaluate(SIGN_IN_FORM_JS) is True,
+            **listing}
+
+
+def _sent_to_sign_in(s, asked):
+    """True when opening `asked` ended somewhere else, on a page with a sign-in form."""
+    landed, want = urlparse(s.page["url"]), urlparse(asked)
+    moved = (landed.netloc, landed.path.rstrip("/")) != (want.netloc, want.path.rstrip("/"))
+    return moved and s.browser.evaluate(SIGN_IN_FORM_JS) is True
 
 
 def _merge(entry, page, path, url):
@@ -73,6 +85,7 @@ def _merge(entry, page, path, url):
     if page["kind"] == "listing":
         entry["kind"] = "listing"
     entry["sort"] = entry["sort"] or page["sort"]
+    entry["sign_in"] = entry.get("sign_in", False) or page["sign_in"]
     return entry
 
 
@@ -80,7 +93,7 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
     """Map the site at `url`. Returns the map, and writes it as JSON to `out` when given."""
     started, origin = time.monotonic(), "{0.scheme}://{0.netloc}".format(urlparse(url))
     site = {"start": url, "explored_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "menus": [], "popups": [], "blocked": None}
+            "menus": [], "popups": [], "blocked": None, "behind_login": []}
     found, s = {"_site": site}, session(url, isolated=True)
     try:
         site["blocked"] = bot_check(s.page)
@@ -126,7 +139,11 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
                 visited.append(path)
                 continue
             s.wait_loaded()
-            s.observe()
+            _wait_for_content(s)  # a sign-in redirect made in the page's script lands after the load
+            if _sent_to_sign_in(s, origin + path):
+                site["behind_login"].append(path)
+                visited.append(path)
+                continue
             if not on_site(s.page["url"], urlparse(url).hostname) or bot_check(s.page):
                 visited.append(path)
                 continue
@@ -139,6 +156,9 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
         found.update(entries)
         log(f"explored {len(pages)} pages in {time.monotonic() - started:.0f} s: {len(entries)} routes, "
             f"{sum(e['kind'] == 'listing' for e in entries.values())} listings, {len(site['menus'])} menus")
+        if site["behind_login"]:
+            log(f"behind a login: {', '.join(site['behind_login'])}. Not mapped; to show them, log in once with "
+                f"`jev-demofast chrome --open <the sign-in page>`, then explore again")
         return _write(found, out)
     finally:
         s.close()
