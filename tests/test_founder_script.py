@@ -327,3 +327,10 @@ def test_the_demo_reads_the_repos_readme_for_the_script(demo, tmp_path, monkeypa
     cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--repo", "https://github.com/a/b", "--voice", "apollo",
               "--out", "d.mp4"])
     assert seen["readme"] == "README of https://github.com/a/b"
+
+
+def test_the_voice_over_keeps_the_script_over_setup_headings():
+    """onecentdemo.com: gliding down its page, the voice-over read the install section ("FFmpeg recording the result",
+    "here's what you need to install", "Start the browser, describe the demo") instead of the founder's script."""
+    rules = fit.SYSTEM.lower()
+    assert "install" in rules and "tool names" in rules and "carry on with your script" in rules

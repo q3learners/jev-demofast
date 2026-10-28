@@ -36,6 +36,9 @@ only what the moment recorded (do, target, headings, items): never a menu, panel
 the moment doesn't show. not_recorded lists planned pages that couldn't be shown: leave out what your script says
 about them, and never mention that anything wasn't shown. Never quote a heading or a slogan from the page ("Different starts,
 same progress."): the viewer is reading it already. A scroll (do: look) needs only a few words, or none.
+Headings show what's on screen, not what to say: when they are install, setup or developer steps ("Start the browser",
+"Get early access"), carry on with your script over them. Leave out install steps, commands, code and tool names
+(FFmpeg, Chrome, npm) unless your founder_script speaks about them.
 
 Never write stage directions or captions ("open the Men menu", "let's open K-12", "filters open", "Active takes us to the collection"):
 the viewer sees those. Say what the founder would say over them.
