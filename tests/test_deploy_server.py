@@ -175,3 +175,16 @@ def test_a_request_with_a_bad_repo_is_refused(monkeypatch, tmp_path):
     h = handler("/runs", body, runs=server.Runs(str(tmp_path), spawn=lambda cmd, log: Proc()))
     h.do_POST()
     assert h.sent == [400]
+
+
+def test_a_run_says_when_it_ended_once_it_has(tmp_path):
+    # the page's clock freezes at the real end ("made in 2:05"), also when it is opened later from Recent demos
+    import os
+    procs = {}
+    runs = server.Runs(str(tmp_path), spawn=lambda cmd, log: procs.setdefault("p", Proc()))
+    rid = runs.start("https://shop.test/", "Show it", "apollo")
+    (tmp_path / rid / "log.txt").write_text("exploring\n")
+    assert runs.status(rid)["ended"] is None
+    os.utime(tmp_path / rid / "log.txt", (1_800_000_000, 1_800_000_000))
+    procs["p"].code = 1
+    assert runs.status(rid)["ended"] == 1_800_000_000
