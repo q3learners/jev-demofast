@@ -138,7 +138,8 @@ class Runs:
         state = "running" if code is None else "done" if code == 0 and video else "failed"
         verdict = next((line for line in reversed(log) if line.startswith("verified:")), "")
         narration = _read(os.path.join(work, "demo.run", "narration.txt")) or ""
-        return {"id": rid, **meta, "status": state, "video": video,
+        ended = os.path.getmtime(os.path.join(work, "log.txt")) if state != "running" and log else None
+        return {"id": rid, **meta, "status": state, "video": video, "ended": ended,
                 "verified": verdict.startswith("verified: True") if verdict else None,
                 "story": (_read(os.path.join(work, "demo.run", "story.txt")) or "").strip() or None,
                 "narration": [m.group(1).strip() for m in re.finditer(r"^\d\d — .*\n(.+)$", narration, re.M)],
