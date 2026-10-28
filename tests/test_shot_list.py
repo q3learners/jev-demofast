@@ -33,9 +33,9 @@ def test_shots_are_capped():
     assert len(shots) == 1 + MAX_SHOTS
 
 
-def test_nothing_valid_means_no_tour():
-    assert validate([{"page": "/nope"}], MAP, log=lambda m: None) == []
+def test_a_reply_that_isnt_a_shot_list_means_no_tour():
     assert validate("junk", MAP, log=lambda m: None) == []
+    assert validate(None, MAP, log=lambda m: None) == []
 
 
 def test_a_page_is_shown_once():
@@ -61,5 +61,10 @@ def test_a_one_page_site_is_toured_down_its_home_page():
     assert validate([], one_page, log=lambda m: None) == [{"page": "/", "show": ""}]
 
 
-def test_a_site_with_pages_but_no_valid_shot_still_has_no_tour():
-    assert validate([{"page": "/nope"}], MAP, log=lambda m: None) == []
+def test_a_site_with_pages_but_no_page_to_show_is_toured_down_its_home_page():
+    # reafi.ai: 6 pages mapped, a script about the home page alone, no shot beyond it. The demo hunted for a goal and
+    # went home → /register → home six times
+    assert validate([{"page": "/", "show": "the promise"}], MAP, log=lambda m: None) == [
+        {"page": "/", "show": "the promise"}]
+    assert validate([{"page": "/nope"}], MAP, log=lambda m: None) == [{"page": "/", "show": ""}]
+    assert validate([], MAP, log=lambda m: None) == [{"page": "/", "show": ""}]

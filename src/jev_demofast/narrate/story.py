@@ -109,7 +109,7 @@ def write(cf, prompt, index, work, product="", readme="", log=print):
 
 def _parse(reply):
     """(script, shots) from the reply: the JSON object in it, wherever it sits (after a <think> block, in a ```
-    fence, among prose); else the whole reply, without a think block, is the script."""
+    fence, among prose); else the whole reply, without a think block, is the script, with no shot list (None)."""
     reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.S).strip()
     found = re.search(r"\{.*\}", reply, re.S)
     try:
@@ -117,7 +117,7 @@ def _parse(reply):
     except ValueError:
         data = None
     if not isinstance(data, dict) or not str(data.get("script") or "").strip():
-        return reply, []
+        return reply, None  # no shot list at all: the demo records its goal instead of a tour
     return str(data["script"]).strip(), data.get("shots") or []
 
 
