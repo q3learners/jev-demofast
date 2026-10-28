@@ -1,17 +1,16 @@
 # jev-demofast
 
-[![onecentdemo: one sentence in, a narrated demo out](docs/banner.jpg)](https://onecentdemo.com)
+[![One sentence in: the site is mapped, a founder's script is written, Jev records it, and it's narrated](docs/hero.svg)](https://onecentdemo.com)
 
 **One sentence in, a narrated product demo out.** Tell it what to show and to whom. It explores your site, writes the
 voice-over a founder would give, drives a real browser through it, and hands you an MP4.
 
 ![GitHub trending demo, generated from one sentence](docs/github-trending.gif)
 
-```bash
-jev-demofast demo "Show how to find hot trending projects on GitHub this week" --url https://github.com/ --gif
-```
+That GIF is the unedited output, about 20 seconds from sentence to video. Here is the run behind it: an LLM plans the
+route once, then Jev, a small decision model, picks each element in about a quarter of a second.
 
-That GIF is the unedited output, about 20 seconds from sentence to video.
+![A real run, decision by decision](docs/run.svg)
 
 **Two ways to try it:**
 - **In your browser, nothing to install:** [app.onecentdemo.com](https://app.onecentdemo.com). Sign in and get $1 of
