@@ -179,8 +179,9 @@ def cmd_demo(a):
     a.index = site_map(a, cf)
     if a.voice:  # the founder's script comes first; the recording is narrated from it
         from .index import load as load_index
-        from .narrate import story
-        story.write(cf, a.prompt, load_index(a.index), a.work, product=a.product)
+        from .narrate import repo, story
+        readme = repo.readme(a.repo) if a.repo else ""
+        story.write(cf, a.prompt, load_index(a.index), a.work, product=a.product, readme=readme)
         a.shots = story.shots(a.work)
     result = cmd_run(a, cf)
     if a.voice:
@@ -250,6 +251,8 @@ def main(argv=None):
                                    "needs ELEVENLABS_API_KEY), or a Deepgram Aura-2 voice such as apollo or thalia")
     d.add_argument("--voice-speed", type=float, default=1.0, help="speak faster or slower, same pitch (e.g. 1.2)")
     d.add_argument("--product", default="", help="one line about the product, for narration")
+    d.add_argument("--repo", default="", help="the product's public GitHub repo: its README gives the founder's script "
+                                              "the product's own words (read only, never cloned or run)")
     d.add_argument("--music", metavar="FILE", help="background music (a track you have the rights to); ducked under the voice")
     d.set_defaults(fn=cmd_demo)
 

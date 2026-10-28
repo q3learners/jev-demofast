@@ -1,7 +1,8 @@
 """The hosted service's job server, inside the container: one demo at a time, from a public URL and a prompt.
 
 The Worker in front of it (deploy/cloudflare/src/worker.js) handles who may use it; this server only runs demos.
-  POST /runs {"url", "prompt", "voice"} → {"id"}       409 while another run is going
+  POST /runs {"url", "prompt", "voice", "repo"?} → {"id"}  409 while another run is going; repo: a public GitHub
+                                                         repo, whose README the founder's script reads
   GET  /runs/<id>                     → status, log tail, the founder's script, the narration, the verdict
   GET  /runs/<id>/video               → the MP4
 Each run is `jev-demofast demo` in a subprocess (the prompt is one argument; no shell). Addresses that resolve to the
@@ -25,6 +26,8 @@ PROMPT_MAX = 500
 BODY_MAX = 10_000
 VOICE = re.compile(r"^[a-z][a-z-]{1,30}$")
 RUN_ID = re.compile(r"^[0-9a-f]{12}$")
+REPO = re.compile(r"^https://(www\.)?github\.com/[A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*(/[\w./-]*)?$")
+REPO_MAX = 200
 LOG_TAIL = 80
 
 
@@ -66,10 +69,17 @@ def check_voice(voice):
     return None if voice and VOICE.match(voice) else "unknown voice"
 
 
-def command(prompt, url, voice, work):
+def check_repo(repo):
+    """None when there is no repo or it is a link to a repo on github.com; else why not."""
+    if not repo:
+        return None
+    return None if len(repo) <= REPO_MAX and REPO.match(repo) else "use a link to a GitHub repo (https://github.com/owner/repo)"
+
+
+def command(prompt, url, voice, work, repo=""):
     # "--" ends the options: whatever the prompt says, it is the prompt, never a flag such as --index or --music.
     return ["jev-demofast", "demo", "--url", url, "--fresh", "--voice", voice, "--out", os.path.join(work, "demo.mp4"),
-            "--", prompt]
+            *(["--repo", repo] if repo else []), "--", prompt]
 
 
 def _spawn(cmd, log):
@@ -91,7 +101,7 @@ class Runs:
         self.lock, self.current, self.procs = threading.Lock(), None, {}
         os.makedirs(data, exist_ok=True)
 
-    def start(self, url, prompt, voice):
+    def start(self, url, prompt, voice, repo=""):
         with self.lock:
             if self.current and self.procs[self.current].poll() is None:
                 raise Busy(self.current)
@@ -99,8 +109,9 @@ class Runs:
             work = os.path.join(self.data, rid)
             os.makedirs(work)
             with open(os.path.join(work, "meta.json"), "w") as f:
-                json.dump({"url": url, "prompt": prompt, "voice": voice, "started": time.time()}, f)
-            self.procs[rid] = self.spawn(command(prompt, url, voice, work), os.path.join(work, "log.txt"))
+                json.dump({"url": url, "prompt": prompt, "voice": voice, **({"repo": repo} if repo else {}),
+                           "started": time.time()}, f)
+            self.procs[rid] = self.spawn(command(prompt, url, voice, work, repo), os.path.join(work, "log.txt"))
             self.current = rid
             threading.Thread(target=self._watch, args=(rid,), daemon=True).start()
             return rid
@@ -127,7 +138,8 @@ class Runs:
         state = "running" if code is None else "done" if code == 0 and video else "failed"
         verdict = next((line for line in reversed(log) if line.startswith("verified:")), "")
         narration = _read(os.path.join(work, "demo.run", "narration.txt")) or ""
-        return {"id": rid, **meta, "status": state, "video": video,
+        ended = os.path.getmtime(os.path.join(work, "log.txt")) if state != "running" and log else None
+        return {"id": rid, **meta, "status": state, "video": video, "ended": ended,
                 "verified": verdict.startswith("verified: True") if verdict else None,
                 "story": (_read(os.path.join(work, "demo.run", "story.txt")) or "").strip() or None,
                 "narration": [m.group(1).strip() for m in re.finditer(r"^\d\d — .*\n(.+)$", narration, re.M)],
@@ -184,11 +196,12 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._json(400, {"error": "send JSON"})
         url, prompt, voice = str(body.get("url", "")), str(body.get("prompt", "")), str(body.get("voice", "chris"))
-        problem = check_url(url) or check_prompt(prompt) or check_voice(voice)
+        repo = str(body.get("repo") or "").strip()
+        problem = check_url(url) or check_prompt(prompt) or check_voice(voice) or check_repo(repo)
         if problem:
             return self._json(400, {"error": problem})
         try:
-            return self._json(202, {"id": self.runs.start(url, prompt.strip(), voice)})
+            return self._json(202, {"id": self.runs.start(url, prompt.strip(), voice, repo)})
         except Busy as busy:
             return self._json(409, {"error": "another demo is still recording", "id": str(busy)})
 

@@ -23,6 +23,9 @@
   textarea, input, select { width: 100%; font: inherit; color: var(--ink); background: var(--bg);
     border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
   textarea { min-height: 84px; resize: vertical; }
+  .field { margin-top: 14px; }
+  .optional { font-weight: 400; color: var(--muted); }
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
   .row { display: grid; grid-template-columns: 1fr 160px; gap: 12px; margin-top: 14px; }
   @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
   button { margin-top: 16px; font: inherit; font-weight: 600; background: var(--accent); color: var(--accent-ink);
@@ -43,6 +46,66 @@
   .verdict.ok { color: var(--ok); font-weight: 600; } .verdict.bad { color: var(--bad); font-weight: 600; }
   .history a { color: var(--ink); } .history li { margin: 4px 0; } .muted { color: var(--muted); font-size: 14px; }
   [hidden] { display: none !important; }
+
+  /* The live run: a clock, the pipeline, counters, and what the recorder is doing right now */
+  .live-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .clock { font: 600 44px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; }
+  .clock small { font-size: 20px; color: var(--muted); }
+  .clock-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; }
+  .eta { text-align: right; }
+  .eta .value { font: 600 22px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .track { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin: 16px 0 18px; }
+  .track > div { height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width 0.6s ease; }
+  .running .track > div { background-image: linear-gradient(45deg, rgba(255,255,255,.28) 25%, transparent 25%,
+      transparent 50%, rgba(255,255,255,.28) 50%, rgba(255,255,255,.28) 75%, transparent 75%);
+    background-size: 18px 18px; animation: stripes 0.8s linear infinite; }
+  @keyframes stripes { to { background-position: 18px 0; } }
+
+  .stages { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 0 0 16px; padding: 0; list-style: none; }
+  @media (max-width: 560px) { .stages { grid-template-columns: repeat(2, 1fr); } }
+  .stage { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 14px;
+    background: var(--bg); color: var(--muted); }
+  .stage .n { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .stage .name { font-weight: 600; font-size: 14px; color: inherit; }
+  .stage .t { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .stage .fill { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: var(--accent); transition: width 0.6s ease; }
+  .stage.live { border-color: var(--accent); color: var(--ink); }
+  .stage.live::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--accent) 14%, transparent) 50%, transparent 70%);
+    background-size: 220% 100%; animation: shimmer 1.6s ease-in-out infinite; }
+  @keyframes shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+  .stage.done { color: var(--ink); }
+  .stage.done .fill { width: 100%; background: var(--ok); }
+  .stage.done .t::after { content: " ✓"; color: var(--ok); display: inline-block; animation: pop 0.4s ease-out; }
+  .stage.failed { border-color: var(--bad); color: var(--bad); }
+  .stage.failed .fill { width: 100%; background: var(--bad); }
+  @keyframes pop { 0% { transform: scale(0); } 70% { transform: scale(1.4); } 100% { transform: scale(1); } }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .stat .v { font: 600 24px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat.fresh { animation: glow 1.2s ease-out; }
+  @keyframes glow { from { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); } }
+
+  .ticker { display: flex; align-items: center; gap: 10px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--code); border-radius: 8px; padding: 10px 12px; min-height: 40px; overflow: hidden; }
+  .ticker .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .running .ticker .dot { animation: pulse 1.2s ease-in-out infinite; }
+  .ticker .text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .running .ticker .text::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; }
+  @keyframes pulse { 50% { transform: scale(1.6); opacity: 0.4; } }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .verdict { margin: 16px 0 4px; font-size: 17px; }
+  .verdict.pop { animation: rise 0.5s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
+  details.log summary { cursor: pointer; font-weight: 600; font-size: 15px; margin: 18px 0 6px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
@@ -61,63 +124,199 @@
           <option value="will">Will</option><option value="sarah">Sarah</option><option value="jessica">Jessica</option>
         </select></div>
     </div>
+    <div class="field"><label for="repo">GitHub repo <span class="optional">optional</span></label>
+      <input id="repo" type="url" maxlength="200" pattern="https://(www\.)?github\.com/[^/]+/[^/]+.*"
+        placeholder="https://github.com/your-org/your-product">
+      <p class="hint">Public repos only. The script reads its README for what the product is and why; nothing is cloned or run.</p></div>
     <button id="go" type="submit">Make the demo</button>
     <div class="error" id="formError" hidden></div>
   </form>
 
   <section class="panel" id="run" hidden>
-    <ul class="steps" id="steps"></ul>
+    <div class="live-head">
+      <div><div class="clock-label" id="clockLabel">Elapsed</div><div class="clock" id="clock">0:00<small>.0</small></div></div>
+      <div class="eta"><div class="clock-label" id="etaLabel">Usually done in</div><div class="value" id="eta">—</div></div>
+    </div>
+    <div class="track"><div id="track"></div></div>
+    <ol class="stages" id="stages"></ol>
+    <div class="stats" id="stats"></div>
+    <div class="ticker"><span class="dot"></span><span class="text" id="ticker">Waiting for the recorder…</span></div>
     <div id="verdict" class="verdict"></div>
     <div id="videoBox" hidden><video id="video" controls playsinline></video>
       <p><a id="download" download>Download the MP4</a></p></div>
     <div id="storyBox" hidden><h2>The founder's script</h2><div class="story" id="story"></div></div>
     <div id="linesBox" hidden><h2>Spoken over the video</h2><ol class="lines" id="lines"></ol></div>
-    <h2>Log</h2><pre id="log"></pre>
+    <details class="log"><summary>Log</summary><pre id="log"></pre></details>
   </section>
 
   <section class="panel history"><h2 style="margin-top:0">Recent demos</h2><ul id="history" class="muted"><li>Loading…</li></ul></section>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
-const STEPS = [
-  ["start", "Starting", () => true],
-  ["explore", "Mapping the site", (log) => /exploring|explored|no map/.test(log)],
-  ["script", "Founder's script", (log) => /founder's script/.test(log)],
-  ["record", "Recording", (log) => /\d+ ms\s+\[/.test(log)],
-  ["narrate", "Narrating", (log) => /^voice:/m.test(log)],
-  ["render", "Video", (log) => /^video /m.test(log)],
+// Each stage is done once its line appears in the log. `typical` is how long the stage usually takes on the hosted
+// recorder (seconds, from the runs of 27–28 Oct 2026); it is only used for the "usually done in" estimate.
+const STAGES = [
+  { key: "map", name: "Map the site", typical: 18, done: /^explored \d+ pages|^repo: |^founder's script:/m,
+    took: /^explored \d+ pages in (\d+) s/m },
+  { key: "script", name: "Founder's script", typical: 25, done: /^shots: |^no shot list/m },
+  { key: "record", name: "Record", typical: 20, done: /^recorded \d+ frames|^done in /m, took: /^done in ([\d.]+) s/m },
+  { key: "narrate", name: "Narrate", typical: 40, done: /^voice: /m },
+  { key: "render", name: "Video", typical: 10, done: /^video [\d.]+s/m },
 ];
-let timer = null;
+// What the log says, as counters. Values only come from the run's own lines; a missing one shows "—".
+const STATS = [
+  { key: "pages", label: "pages mapped", find: (log) => num(log, /^explored (\d+) pages/m) },
+  { key: "words", label: "words in the script", find: (log, run) => run.story ? run.story.split(/\s+/).length : null },
+  { key: "shots", label: "shots planned", find: (log) => { const m = log.match(/^shots: (.+)$/m);
+      return m ? (m[1].trim() === "none" ? 0 : m[1].split("→").length) : null; } },
+  { key: "frames", label: "frames recorded", find: (log) => num(log, /^recorded (\d+) frames/m) },
+  { key: "voice", label: "seconds of voice", find: (log) => num(log, /^voice: one take, \d+ characters, ([\d.]+) s/m), dp: 1 },
+  { key: "video", label: "seconds of video", find: (log) => num(log, /^video ([\d.]+)s/m), dp: 1 },
+];
+const NOISE = /hover|StalePage|^\s*$|^Traceback|^\s+File /;
+let timer = null, current = null;  // current: the run on screen, with what the page has seen of it
 
-function showSteps(run) {
-  const log = (run.log || []).join("\n");
-  const reached = STEPS.filter(([, , seen]) => seen(log)).length;
-  $("steps").innerHTML = STEPS.map(([key, label], i) => {
-    const cls = run.status === "running" ? (i < reached - 1 ? "done" : i === reached - 1 ? "now" : "")
-      : (i < reached ? "done" : "");
-    return `<li class="${cls}">${label}</li>`;
+function num(log, re) { const m = log.match(re); return m ? parseFloat(m[1]) : null; }
+function fmt(s, tenths) {
+  s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60;
+  return tenths ? `${m}:${String(Math.floor(r)).padStart(2, "0")}<small>.${Math.floor((r % 1) * 10)}</small>`
+                : `${m}:${String(Math.round(r) % 60).padStart(2, "0")}`;
+}
+const now = () => Date.now() / 1000;
+
+function track(run) {
+  // The log tail is the last 80 lines: what was seen once (a stage's end, a counter) is kept for this run.
+  // doneAt: when this page saw a stage end. A stage that had already ended when the page opened has no time of its own.
+  if (!current || current.id !== run.id) current = { id: run.id, log: "", doneAt: {}, stats: {}, opened: now() };
+  for (const line of run.log || []) if (!current.log.includes(line + "\n")) current.log += line + "\n";
+  STAGES.forEach((st) => { if (!(st.key in current.doneAt) && st.done.test(current.log)) current.doneAt[st.key] = now(); });
+  STATS.forEach((st) => { const v = st.find(current.log, run); if (v !== null && v !== undefined) current.stats[st.key] = v; });
+  current.run = run;
+}
+
+function stageState() {
+  const run = current.run, log = current.log;
+  const first = STAGES.findIndex((st) => !(st.key in current.doneAt));
+  return STAGES.map((st, i) => {
+    const done = st.key in current.doneAt;
+    const live = run.status === "running" && i === first;
+    const failed = run.status === "failed" && i === first;
+    const since = i === 0 ? run.started : current.doneAt[STAGES[i - 1].key];
+    const watched = done && since && current.doneAt[st.key] > current.opened + 1 && (i === 0 || since > current.opened + 1);
+    const took = (st.took && num(log, st.took)) ?? (watched ? current.doneAt[st.key] - since : null);
+    return { ...st, done, live, failed, took, since };
+  });
+}
+
+function showStages() {
+  const states = stageState();
+  $("stages").innerHTML = states.map((st, i) => {
+    const cls = st.done ? "done" : st.live ? "live" : st.failed ? "failed" : "";
+    const t = st.done ? (st.took != null ? `${Math.round(st.took)} s` : "done")
+      : st.live ? `<span data-since="${st.since || ""}">0:00</span>` : st.failed ? "stopped" : "waiting";
+    const fill = st.live && st.since ? Math.min(0.95, (now() - st.since) / st.typical) : 0;
+    return `<li class="stage ${cls}"><div class="n">${i + 1} of ${STAGES.length}</div><div class="name">${st.name}</div>
+      <div class="t">${t}</div><div class="fill" data-typical="${st.typical}" style="width:${fill * 100}%"></div></li>`;
   }).join("");
 }
 
+function showStats() {
+  $("stats").innerHTML = STATS.map((st) => `<div class="stat" id="stat-${st.key}"><div class="v">—</div>
+    <div class="k">${st.label}</div></div>`).join("");
+  current.shown = {};
+}
+
+function updateStats() {
+  if (!current.shown) showStats();
+  STATS.forEach((st) => {
+    const v = current.stats[st.key];
+    if (v === undefined || current.shown[st.key] === v) return;
+    const box = $(`stat-${st.key}`), from = current.shown[st.key] || 0;
+    current.shown[st.key] = v;
+    box.classList.remove("fresh"); void box.offsetWidth; box.classList.add("fresh");
+    countUp(box.querySelector(".v"), from, v, st.dp || 0);
+  });
+}
+
+function countUp(el, from, to, dp) {
+  const t0 = performance.now(), ms = 700;
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = (from + (to - from) * e).toFixed(dp);
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function showTicker() {
+  const lines = current.log.trim().split("\n").filter((l) => !NOISE.test(l));
+  let line = (lines[lines.length - 1] || "").replace(/^\s*\d+ ms\s+/, "").replace(/\s*→\s*\/data\/\S+/, "").trim();
+  if (current.run.status === "done") line = "Finished.";
+  if (line && line !== current.ticker) {
+    current.ticker = line;
+    const el = $("ticker"); let n = 0;
+    clearInterval(current.typing);
+    current.typing = setInterval(() => { n += 3; el.textContent = line.slice(0, n); if (n >= line.length) clearInterval(current.typing); }, 16);
+  }
+}
+
+// The clock, the stage timers and the estimate, every frame while the run is going.
+function tick() {
+  if (!current || !current.run) return;
+  const run = current.run, running = run.status === "running";
+  const end = running ? now() : (run.ended || now());
+  const elapsed = run.started ? end - run.started : 0;
+  $("clock").innerHTML = fmt(elapsed, true);
+  $("clockLabel").textContent = running ? "Elapsed" : run.status === "done" ? "Made in" : "Stopped after";
+  let left = 0;
+  stageState().forEach((st) => {
+    if (st.done) return;
+    left += st.live && st.since ? Math.max(3, st.typical - (now() - st.since)) : st.typical;
+  });
+  if (running) {
+    $("etaLabel").textContent = "Usually done in";
+    $("eta").textContent = left <= 3.5 ? "almost there" : "≈ " + fmt(left);
+    $("track").style.width = `${Math.min(97, (elapsed / (elapsed + left)) * 100)}%`;
+  } else {
+    $("etaLabel").textContent = run.status === "done" ? "Video" : "";
+    $("eta").textContent = run.status === "done" && current.stats.video ? `${current.stats.video.toFixed(1)} s` : "";
+    $("track").style.width = run.status === "done" ? "100%" : $("track").style.width;
+  }
+  document.querySelectorAll("[data-since]").forEach((el) => { const s = parseFloat(el.dataset.since);
+    if (s) el.textContent = fmt(now() - s); });
+  document.querySelectorAll(".stage.live .fill").forEach((el) => { const s = parseFloat(el.closest(".stage")
+    .querySelector("[data-since]")?.dataset.since); if (s) el.style.width = `${Math.min(95, (now() - s) / el.dataset.typical * 100)}%`; });
+  if (running) requestAnimationFrame(tick);
+}
+
 function show(run) {
+  const wasRunning = current && current.id === run.id && current.run && current.run.status === "running";
+  const fresh = !current || current.id !== run.id;
+  track(run);
+  if (fresh) { current.shown = null; current.ticker = null; }
   $("run").hidden = false;
-  showSteps(run);
-  $("log").textContent = (run.log || []).slice(-40).join("\n");
+  $("run").classList.toggle("running", run.status === "running");
+  showStages(); updateStats(); showTicker();
+  $("log").textContent = current.log.trim().split("\n").slice(-60).join("\n");
   $("log").scrollTop = $("log").scrollHeight;
   $("storyBox").hidden = !run.story; $("story").textContent = run.story || "";
   $("linesBox").hidden = !(run.narration || []).length;
   $("lines").innerHTML = (run.narration || []).map((l) => `<li>${escapeHtml(l)}</li>`).join("");
   const v = $("verdict");
-  if (run.status === "running") { v.textContent = "Working…"; v.className = "verdict"; }
-  else if (run.status === "done") {
-    v.textContent = run.verified ? "Done: the demo reached the goal." : "Done, but the goal wasn't confirmed on screen.";
-    v.className = "verdict " + (run.verified ? "ok" : "bad");
-  } else { v.textContent = "Stopped: " + (run.error || "the run failed"); v.className = "verdict bad"; }
+  if (run.status === "running") { v.textContent = ""; v.className = "verdict"; }
+  else {
+    if (run.status === "done") {
+      v.textContent = run.verified ? "✓ Done: the demo reached the goal." : "Done, but the goal wasn't confirmed on screen.";
+      v.className = "verdict " + (run.verified ? "ok" : "bad");
+    } else { v.textContent = "Stopped: " + (run.error || "the run failed"); v.className = "verdict bad"; }
+    if (wasRunning) v.classList.add("pop");
+  }
   if (run.status !== "running" && run.video) {
     const src = `/api/runs/${run.id}/video`;
     if ($("video").getAttribute("src") !== src) { $("video").src = src; $("download").href = src; }
     $("videoBox").hidden = false;
   } else { $("videoBox").hidden = true; }
+  requestAnimationFrame(tick);
 }
 
 function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
@@ -129,7 +328,7 @@ async function poll(id, misses = 0) {
     if (r.ok) {
       const run = await r.json();
       show(run);
-      if (run.status === "running") timer = setTimeout(() => poll(id), 3000);
+      if (run.status === "running") timer = setTimeout(() => poll(id), 1500);
       else { $("go").disabled = false; history(); }
       return;
     }
@@ -151,7 +350,8 @@ $("form").addEventListener("submit", async (e) => {
   e.preventDefault();
   $("formError").hidden = true;
   $("go").disabled = true;
-  const body = JSON.stringify({ prompt: $("prompt").value.trim(), url: $("url").value.trim(), voice: $("voice").value });
+  const body = JSON.stringify({ prompt: $("prompt").value.trim(), url: $("url").value.trim(), voice: $("voice").value,
+                               repo: $("repo").value.trim() });
   for (let attempt = 0; attempt < 15; attempt++) {
     $("go").textContent = attempt ? "Waking the recorder…" : "Starting…";
     let r;

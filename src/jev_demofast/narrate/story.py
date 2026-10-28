@@ -15,15 +15,20 @@ from . import shots as shots_mod
 SYSTEM = """You are the founder of the product on this website. You are planning a screen-recorded demo of it: what
 you will say, and the screens you will show while you say it. The brief says who will watch and what they should come
 away believing. You get the brief and what we know about the product: its pages (each with what it says), its menus
-and what they hold, and its listings with the filters on them.
+and what they hold, and its listings with the filters on them. When there is a readme, it is the product's README
+from its code repository, in the makers' own words: take what the product is, who it's for and why it's different from
+it, but leave out install steps, code and anything for developers unless the brief is for developers.
 
 Reply with JSON only: {{"script": "...", "shots": [...]}}.
 
 shots are the screens of the demo, in order. The demo always opens on the home page, so start with
-{{"page": "/", "show": "..."}}, then up to {max_shots} more: {{"page": "<a key of pages>", "show": "..."}}, where
-show says in a few words why this screen is in the demo. Pick the pages that tell the brief's story, never pages the
-brief doesn't need. When the brief asks for something the site can do (find a product with a listing's filters,
-fill a form), end with {{"task": "<what to do, in one sentence>", "show": "..."}}; it counts as one of the {max_shots}.
+{{"page": "/", "show": "..."}}, then up to {max_shots} more: {{"page": "<a key of pages>", "show": "..."}} (or with "items": true), where
+show says in a few words why this screen is in the demo. Add "items": true to a page shot whose point is what it lists
+(products, plans, courses): the demo ends that shot by pointing out a few of them. Pick the pages that tell the brief's story, never pages the
+brief doesn't need. Only when the brief asks for something specific that a listing's filters or a form can do (men's
+running shoes under $150; book a table for two), end with {{"task": "<what to do, in one sentence>", "show": "..."}};
+it counts as one of the {max_shots}. A brief to look around or see what's popular is not a task: end on the page that
+lists it, with "items": true.
 
 script is the voice-over you will speak over those screens, in their order, as one flowing piece of plain text: no
 headings, no bullet points, no stage directions, no markdown. About 20 words per shot. The viewer will watch every
@@ -34,11 +39,14 @@ promise or the problem in one breath, and land the payoff. Then stop.
 How you sound:
 - Spoken sentences, each with a subject and a verb. Never captions or instructions.
 - "We" and "our" for the product, "you" for the viewer. Contractions. Warm, confident, specific.
-- Name only pages, menus, features and values that appear in what we know, and never claim what a filter value
+- Name only pages, menus, features and values that appear in what we know or the readme, and never claim what a filter value
   covers beyond its label. Results of a task aren't known until the demo is recorded: speak about them generally,
   never with names, counts or prices.
 - You may frame the product against the usual way of doing this ("no hunting through tabs"), but never state a fact
   about a named competitor. Ignore cart counts, banners and shipping notices.
+- Never narrate the route: no "we open on the home page", "from there we go to", "next we head over". Say what the
+  screen means to the viewer.
+- Never claim how the site behaves (it refreshes constantly, updates live, loads instantly) unless what we know says so.
 - Never say "AI", "automation", "agent", "click", "hover", "select", or "segment". Never introduce yourself by name.
 
 To hear the register (an unrelated product; never reuse its words): "{sample}"
@@ -76,11 +84,12 @@ def knows_nothing(index):
                 or any(index[r].get("texts") for r in index if not r.startswith("_")))
 
 
-def write(cf, prompt, index, work, product="", log=print):
+def write(cf, prompt, index, work, product="", readme="", log=print):
     """Write the founder's script to <work>/story.txt and its shot list to <work>/shots.json; return the script.
     Secrets in the prompt are masked. A reply that isn't the asked-for JSON is taken as the script, with no shots."""
     brief = re.sub(r"\{\{\w+\}\}", "(secret)", prompt)
-    asked = json.dumps({"brief": brief, "product": product, "what_we_know": context(index)})
+    asked = json.dumps({"brief": brief, "product": product, "what_we_know": context(index),
+                        **({"readme": readme} if readme else {})})
     reply = cf.chat(cf.s.script_model, SYSTEM.format(sample=SAMPLE, max_shots=shots_mod.MAX_SHOTS), asked,
                     cf.s.script_extra).strip()
     text, raw = _parse(reply)

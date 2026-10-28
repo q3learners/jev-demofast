@@ -43,6 +43,9 @@ def showcase(cf, s, rec, goal, log=print, count=3):
     reveal_results(s)
     page = s.observe()
     items = extract(cf, WHAT, page["url"], s.full_text())
+    if not items:  # nothing listed to show: no empty "read" moment for the narrator to fill
+        log("  showcase: no items on this page")
+        return []
     shown = []
     for item in items[:count]:
         e = _on_screen(s, item)

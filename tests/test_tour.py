@@ -1,5 +1,7 @@
 """The tour: the recorder visits every shot of the founder's list, the way a person would (the link on screen,
-else straight there), shows each page with a scroll or two, and ends with the brief's task when there is one."""
+else straight there), shows each page with a glide down it, and ends with the brief's task when there is one."""
+import re
+
 import pytest
 
 from jev_demofast.drive import tour
@@ -34,8 +36,8 @@ def fake_session(slow=()):
                 def evaluate(self, js, **k):
                     if js == tour.CAN_SCROLL:
                         return outer.y + 780 < TALL[outer._path()] - 40
-                    if js == tour.SCROLL:
-                        outer.y += 624
+                    if js.startswith("window.scrollBy"):  # one small step of a glide: a fraction of the screen
+                        outer.y += round(780 * float(re.search(r"innerHeight \* ([\d.]+)", js).group(1)))
                     if js == tour.TO_TOP:
                         outer.y = 0
                     if js == tour.HEADINGS:
@@ -80,9 +82,9 @@ def fake_session(slow=()):
 
 class FakeRecorder:
     def __init__(self, out, s, blur_typed=True):
-        self.actions, self.dry_run = [], False
+        self.actions, self.dry_run, self.s, self.held = [], False, s, []
 
-    def snap(self, hold, node=None, badge=None): pass
+    def snap(self, hold, node=None, badge=None): self.held.append((hold, self.s.y))
     def discard(self): pass
     def tee(self, log): return log
     def save(self, goal, decisions=(), skipped=()): self.goal, self.skipped = goal, list(skipped)
@@ -140,7 +142,8 @@ def test_a_shot_that_wont_load_is_skipped_and_the_tour_goes_on():
     result, actions = play([HOME, {"page": "/k12", "show": "K-12"}, {"page": "/sat", "show": "SAT"}], slow={"/k12"})
     assert result["skipped"] == ["/k12"] and result["verified"] is False
     assert any(a.get("shot") == 2 for a in actions)
-    assert actions[-1]["outcome"].startswith("not confirmed") and "/k12" in actions[-1]["outcome"]
+    # the result page says which; the voice-over doesn't ("We couldn't reach the contact page, but talk to us...")
+    assert not any("outcome" in a for a in actions) and play.rec.skipped == ["/k12"]
 
 
 def test_a_short_page_gets_no_look():
@@ -192,3 +195,38 @@ def test_a_skipped_page_never_disowns_a_verified_task(monkeypatch):
     result, actions = play([HOME, {"page": "/k12", "show": "K-12"}, {"task": "find", "show": ""}], slow={"/k12"})
     assert "outcome" not in actions[-1] and result["skipped"] == ["/k12"]
     assert play.rec.skipped == ["/k12"]  # kept with the recording, for the voice-over
+
+
+def test_a_shot_with_items_ends_on_them_outlined(monkeypatch):
+    seen = []
+
+    def showcase(cf, s, rec, goal, log=print, count=3):
+        seen.append(goal)
+        rec.commit({"do": "read", "target": "showcase", "items": ["Echo Dot $49"]})
+        return ["Echo Dot $49"]
+    monkeypatch.setattr(tour, "showcase", showcase)
+    _, actions = play([HOME, {"page": "/k12", "show": "what's hot today", "items": True}])
+    assert actions[-1]["do"] == "read" and actions[-1]["shot"] == 1 and actions[-1]["show"] == "what's hot today"
+    assert seen == ["what's hot today"]
+
+
+def test_a_page_is_shown_with_a_glide_the_viewer_can_follow():
+    # each scroll was one jump between two stills: the video cut from the banner to a screen lower, never moving
+    play([HOME, {"page": "/k12", "show": "K-12"}])
+    looks = [a for a in play.rec.actions if a["do"] == "look" and a["shot"] == 1]
+    assert len(looks) == 1  # one moment for the voice-over, however many frames show the motion
+    ys = [y for _, y in play.rec.held]
+    moving = [y for hold, y in play.rec.held if hold == tour.FRAME_S]
+    assert len(moving) == 4 * tour.GLIDE_FRAMES  # home and /k12, two glides each, every step a frame
+    assert max(ys) >= 1.5 * 780  # past the first screen, into the page
+    assert len(looks[0]["headings"]) == 2  # what the viewer saw at both stops
+
+
+
+def test_a_lone_home_page_is_shown_all_the_way_down_one_moment_per_screen():
+    # a one-page site's story is down its page: each stop is a moment of its own, so the script has room to be spoken
+    play([HOME])
+    looks = [a for a in play.rec.actions if a["do"] == "look"]
+    assert len(looks) == 4  # 3000 px tall at 624 px per glide, until the page ends
+    assert [a["shot"] for a in looks] == [1, 2, 3, 4] and all(len(a["headings"]) == 1 for a in looks)
+    assert len(looks) <= tour.LONE_PAGE_GLIDES

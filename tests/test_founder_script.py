@@ -129,7 +129,7 @@ def demo(monkeypatch, tmp_path):
             json.dump(found, f)
         return found
     monkeypatch.setattr(explore_mod, "explore", explore)
-    monkeypatch.setattr(story, "write", lambda cf, prompt, index, work, product="", log=print: seen["order"].append(
+    monkeypatch.setattr(story, "write", lambda cf, prompt, index, work, product="", readme="", log=print: seen["order"].append(
         ("story", prompt, sorted(index))) or "script")
 
     def run(a, cf=None):
@@ -266,7 +266,7 @@ def test_a_leftover_shot_list_is_never_replayed(monkeypatch, tmp_path):
 def test_the_demo_passes_the_shot_list_it_just_wrote(demo, tmp_path, monkeypatch):
     shots = [{"page": "/", "show": ""}, {"task": "x", "show": ""}]
 
-    def write(cf, prompt, index, work, product="", log=print):
+    def write(cf, prompt, index, work, product="", readme="", log=print):
         import os
         os.makedirs(work, exist_ok=True)
         with open(os.path.join(work, "shots.json"), "w") as f:
@@ -290,3 +290,47 @@ def test_a_reply_with_thinking_and_prose_still_gives_the_script_and_shots(tmp_pa
     cf = Writer("<think>plan the demo {first}</think>\nHere's the plan:\n```json\n" + body + "\n```\nHope it helps.")
     story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
     assert (tmp_path / "story.txt").read_text() == "Watch this.\n"
+
+
+def test_the_founder_never_narrates_the_route_or_invents_how_the_site_behaves():
+    """Amazon: "We open on Amazon's home page... From there we go straight to..." and "the page refreshes constantly"."""
+    assert "we open on" in story.SYSTEM.lower() and "refreshes" in story.SYSTEM.lower()
+    assert '"items": true' in story.SYSTEM
+
+
+def test_browsing_is_an_items_shot_not_a_task():
+    """Amazon: "look at hot items sold today" became a task; the goal loop had nothing to aim at and ran out of steps."""
+    assert "is not a task" in story.SYSTEM and "specific" in story.SYSTEM
+
+
+def test_the_readme_reaches_the_founder_as_the_products_own_words(tmp_path):
+    cf = Writer("Script.")
+    story.write(cf, PROMPT, SITE, str(tmp_path), readme="Demo Fast: one sentence in, a product demo out.",
+                log=lambda m: None)
+    assert cf.calls[0]["user"]["readme"] == "Demo Fast: one sentence in, a product demo out."
+    assert "readme" in cf.calls[0]["system"].lower()
+
+
+def test_without_a_repo_nothing_about_a_readme_is_sent(tmp_path):
+    cf = Writer("Script.")
+    story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
+    assert "readme" not in cf.calls[0]["user"]
+
+
+def test_the_demo_reads_the_repos_readme_for_the_script(demo, tmp_path, monkeypatch):
+    from jev_demofast.narrate import repo
+    monkeypatch.setattr(repo, "readme", lambda url, log=print: f"README of {url}")
+    seen = {}
+    monkeypatch.setattr(story, "write", lambda cf, prompt, index, work, product="", readme="", log=print:
+                        seen.update(readme=readme))
+    monkeypatch.setattr(cli, "cmd_run", lambda a, cf=None: {})
+    cli.main(["demo", PROMPT, "--url", "https://shop.test/", "--repo", "https://github.com/a/b", "--voice", "apollo",
+              "--out", "d.mp4"])
+    assert seen["readme"] == "README of https://github.com/a/b"
+
+
+def test_the_voice_over_keeps_the_script_over_setup_headings():
+    """onecentdemo.com: gliding down its page, the voice-over read the install section ("FFmpeg recording the result",
+    "here's what you need to install", "Start the browser, describe the demo") instead of the founder's script."""
+    rules = fit.SYSTEM.lower()
+    assert "install" in rules and "tool names" in rules and "carry on with your script" in rules
