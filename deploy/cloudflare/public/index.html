@@ -23,6 +23,9 @@
   textarea, input, select { width: 100%; font: inherit; color: var(--ink); background: var(--bg);
     border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
   textarea { min-height: 84px; resize: vertical; }
+  .field { margin-top: 14px; }
+  .optional { font-weight: 400; color: var(--muted); }
+  .hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
   .row { display: grid; grid-template-columns: 1fr 160px; gap: 12px; margin-top: 14px; }
   @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
   button { margin-top: 16px; font: inherit; font-weight: 600; background: var(--accent); color: var(--accent-ink);
@@ -61,6 +64,10 @@
           <option value="will">Will</option><option value="sarah">Sarah</option><option value="jessica">Jessica</option>
         </select></div>
     </div>
+    <div class="field"><label for="repo">GitHub repo <span class="optional">optional</span></label>
+      <input id="repo" type="url" maxlength="200" pattern="https://(www\.)?github\.com/[^/]+/[^/]+.*"
+        placeholder="https://github.com/your-org/your-product">
+      <p class="hint">Public repos only. The script reads its README for what the product is and why; nothing is cloned or run.</p></div>
     <button id="go" type="submit">Make the demo</button>
     <div class="error" id="formError" hidden></div>
   </form>
@@ -151,7 +158,8 @@ $("form").addEventListener("submit", async (e) => {
   e.preventDefault();
   $("formError").hidden = true;
   $("go").disabled = true;
-  const body = JSON.stringify({ prompt: $("prompt").value.trim(), url: $("url").value.trim(), voice: $("voice").value });
+  const body = JSON.stringify({ prompt: $("prompt").value.trim(), url: $("url").value.trim(), voice: $("voice").value,
+                               repo: $("repo").value.trim() });
   for (let attempt = 0; attempt < 15; attempt++) {
     $("go").textContent = attempt ? "Waking the recorder…" : "Starting…";
     let r;

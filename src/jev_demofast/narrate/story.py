@@ -15,7 +15,9 @@ from . import shots as shots_mod
 SYSTEM = """You are the founder of the product on this website. You are planning a screen-recorded demo of it: what
 you will say, and the screens you will show while you say it. The brief says who will watch and what they should come
 away believing. You get the brief and what we know about the product: its pages (each with what it says), its menus
-and what they hold, and its listings with the filters on them.
+and what they hold, and its listings with the filters on them. When there is a readme, it is the product's README
+from its code repository, in the makers' own words: take what the product is, who it's for and why it's different from
+it, but leave out install steps, code and anything for developers unless the brief is for developers.
 
 Reply with JSON only: {{"script": "...", "shots": [...]}}.
 
@@ -37,7 +39,7 @@ promise or the problem in one breath, and land the payoff. Then stop.
 How you sound:
 - Spoken sentences, each with a subject and a verb. Never captions or instructions.
 - "We" and "our" for the product, "you" for the viewer. Contractions. Warm, confident, specific.
-- Name only pages, menus, features and values that appear in what we know, and never claim what a filter value
+- Name only pages, menus, features and values that appear in what we know or the readme, and never claim what a filter value
   covers beyond its label. Results of a task aren't known until the demo is recorded: speak about them generally,
   never with names, counts or prices.
 - You may frame the product against the usual way of doing this ("no hunting through tabs"), but never state a fact
@@ -82,11 +84,12 @@ def knows_nothing(index):
                 or any(index[r].get("texts") for r in index if not r.startswith("_")))
 
 
-def write(cf, prompt, index, work, product="", log=print):
+def write(cf, prompt, index, work, product="", readme="", log=print):
     """Write the founder's script to <work>/story.txt and its shot list to <work>/shots.json; return the script.
     Secrets in the prompt are masked. A reply that isn't the asked-for JSON is taken as the script, with no shots."""
     brief = re.sub(r"\{\{\w+\}\}", "(secret)", prompt)
-    asked = json.dumps({"brief": brief, "product": product, "what_we_know": context(index)})
+    asked = json.dumps({"brief": brief, "product": product, "what_we_know": context(index),
+                        **({"readme": readme} if readme else {})})
     reply = cf.chat(cf.s.script_model, SYSTEM.format(sample=SAMPLE, max_shots=shots_mod.MAX_SHOTS), asked,
                     cf.s.script_extra).strip()
     text, raw = _parse(reply)

@@ -25,7 +25,8 @@ def offerable(index):
 
 def validate(raw, index, log=print):
     """The model's shots, checked against the map: home first, pages from the map only, at most MAX_SHOTS after
-    home, a task only as the last shot. [] when no shot beyond the opening is left (no tour)."""
+    home, a task only as the last shot. [] when no shot beyond the opening is left (no tour), except on a one-page site,
+    where the opening alone is the tour."""
     pages = offerable(index)
     raw = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
     opening = {"page": "/", "show": ""}
@@ -48,4 +49,7 @@ def validate(raw, index, log=print):
         shots.append({"page": shot["page"], "show": show, **({"items": True} if shot.get("items") is True else {})})
     task = shots[-1:] if shots and "task" in shots[-1] else []
     shots = [s for s in shots if "task" not in s][:MAX_SHOTS - len(task)] + task
-    return [opening] + shots if shots else []
+    if shots:
+        return [opening] + shots
+    one_page = not [r for r in index if not r.startswith("_") and r != "/"]
+    return [opening] if one_page else []  # a one-page site (onecentdemo.com): its tour is down its home page

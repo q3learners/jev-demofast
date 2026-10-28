@@ -51,3 +51,15 @@ def test_a_shot_can_ask_for_its_items_to_be_shown():
     shots = validate([{"page": "/k12", "show": "a", "items": True}, {"page": "/sat", "show": "b", "items": "yes"}],
                      MAP, log=lambda m: None)
     assert shots[1] == {"page": "/k12", "show": "a", "items": True} and "items" not in shots[2]
+
+
+def test_a_one_page_site_is_toured_down_its_home_page():
+    # onecentdemo.com: one page; with no shot beyond home the demo hunted for a goal, got stuck, and lasted 6 s
+    one_page = {"_site": MAP["_site"], "/": MAP["/"]}
+    assert validate([{"page": "/", "show": "the promise"}], one_page, log=lambda m: None) == [
+        {"page": "/", "show": "the promise"}]
+    assert validate([], one_page, log=lambda m: None) == [{"page": "/", "show": ""}]
+
+
+def test_a_site_with_pages_but_no_valid_shot_still_has_no_tour():
+    assert validate([{"page": "/nope"}], MAP, log=lambda m: None) == []

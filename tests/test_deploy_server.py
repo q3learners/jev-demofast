@@ -142,3 +142,36 @@ def test_a_good_request_starts_a_run(monkeypatch, tmp_path):
     h = handler("/runs", GOOD, runs=server.Runs(str(tmp_path), spawn=lambda cmd, log: Proc()))
     h.do_POST()
     assert h.sent == [202]
+
+
+def test_a_repo_is_optional_and_only_a_github_repo_link():
+    assert server.check_repo("") is None and server.check_repo("https://github.com/q3learners/jev-demofast") is None
+    for bad in ("https://evil.test/a/b", "--music=/etc/passwd", "https://github.com/a", "file:///etc/passwd",
+                "https://github.com/a/b" + "c" * 300):
+        assert server.check_repo(bad), bad
+
+
+def test_the_repo_reaches_the_demo_command_only_when_given(tmp_path):
+    cmd = server.command("Show it", "https://shop.test/", "eric", str(tmp_path / "r1"), repo="https://github.com/a/b")
+    assert cmd[cmd.index("--repo") + 1] == "https://github.com/a/b" and cmd[-2:] == ["--", "Show it"]
+    assert "--repo" not in server.command("Show it", "https://shop.test/", "eric", str(tmp_path / "r2"))
+
+
+def test_a_request_with_a_repo_starts_a_run_with_it(monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "check_url", lambda url: None)
+    started = []
+    runs = server.Runs(str(tmp_path), spawn=lambda cmd, log: started.append(cmd) or Proc())
+    body = json.dumps({**json.loads(GOOD), "repo": "https://github.com/a/b"}).encode()
+    h = handler("/runs", body, runs=runs)
+    h.do_POST()
+    assert h.sent == [202] and "https://github.com/a/b" in started[0]
+    rid = json.loads(h.wfile.getvalue())["id"]
+    assert runs.status(rid)["repo"] == "https://github.com/a/b"
+
+
+def test_a_request_with_a_bad_repo_is_refused(monkeypatch, tmp_path):
+    monkeypatch.setattr(server, "check_url", lambda url: None)
+    body = json.dumps({**json.loads(GOOD), "repo": "https://evil.test/a/b"}).encode()
+    h = handler("/runs", body, runs=server.Runs(str(tmp_path), spawn=lambda cmd, log: Proc()))
+    h.do_POST()
+    assert h.sent == [400]

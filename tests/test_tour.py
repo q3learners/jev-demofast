@@ -221,3 +221,12 @@ def test_a_page_is_shown_with_a_glide_the_viewer_can_follow():
     assert max(ys) >= 1.5 * 780  # past the first screen, into the page
     assert len(looks[0]["headings"]) == 2  # what the viewer saw at both stops
 
+
+
+def test_a_lone_home_page_is_shown_all_the_way_down_one_moment_per_screen():
+    # a one-page site's story is down its page: each stop is a moment of its own, so the script has room to be spoken
+    play([HOME])
+    looks = [a for a in play.rec.actions if a["do"] == "look"]
+    assert len(looks) == 4  # 3000 px tall at 624 px per glide, until the page ends
+    assert [a["shot"] for a in looks] == [1, 2, 3, 4] and all(len(a["headings"]) == 1 for a in looks)
+    assert len(looks) <= tour.LONE_PAGE_GLIDES
