@@ -8,8 +8,10 @@ are made by [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev
 model. On your own app, Jev is guided by a map of every screen built from your source code.
 
 **See it run:** [onecentdemo.com](https://onecentdemo.com) replays two real runs, decision by decision, then plays the
-narrated videos they produced. **Read the story:** [Jev couldn't find the password reset form. Then we gave it a
-map.](https://www.linkedin.com/pulse/jev-couldnt-find-password-reset-form-we-gave-map-venkat-podugu-p23fe/)
+narrated videos they produced. **Try it without installing anything:**
+[app.onecentdemo.com](https://app.onecentdemo.com) is our hosted version of this tool, with $1 of free credit when you
+sign in. This repository is the tool itself, to run on your own machine with your own keys. **Read the story:** [Jev
+couldn't find the password reset form. Then we gave it a map.](https://www.linkedin.com/pulse/jev-couldnt-find-password-reset-form-we-gave-map-venkat-podugu-p23fe/)
 
 ![GitHub trending demo, generated from one sentence](docs/github-trending.gif)
 
@@ -33,6 +35,7 @@ clicks. jev-demofast starts from a sentence, so re-recording after a release is 
 - a Cloudflare account with Workers AI
 - optional: a [Nebius Token Factory](https://tokenfactory.nebius.com) account, to run the language models on NVIDIA
   Nemotron (see [below](#choose-where-the-language-models-run))
+- optional: an [ElevenLabs](https://elevenlabs.io) API key, for the narration voice (see **Narrated** below)
 
 Jev runs on Cloudflare as `typesafe/jev` and is paid from **AI Gateway credits**: add a few dollars in the dashboard
 (AI → AI Gateway → Credits). A demo costs cents.
@@ -59,35 +62,54 @@ DEMO_PASSWORD='...' uv run jev-demofast demo "Reset my password for test@example
 
 ```bash
 uv run jev-demofast demo "Show my investors how easy it is to find men's running shoes under \$150 on our site" \
-    --url https://www.allbirds.com/ --fresh --voice apollo --out allbirds.mp4
+    --url https://www.allbirds.com/ --fresh --voice chris --out allbirds.mp4
 ```
 
 With no `--index`, `demo` explores the site first (about 40 s, once) and keeps the map in
 `~/.cache/jev-demofast/maps/<host>.json` for later demos; delete that file to explore again. `explore <url> --out map.json`
 does the same on its own.
 
-**The founder's script comes first.** Before anything is recorded, Nemotron reads the prompt (who the demo is for, and
-why) and what the map knows (menus, listings, filters and their values) and writes the voice-over a founder would give:
-the promise, why each moment matters, the payoff. It's printed and saved as `story.txt` in the run folder. After
-recording, it's laid over the video in the founder's words, and changed only where the recording proves it wrong: the
-value really chosen, a price band the site had greyed out, and the products and prices actually shown.
+**The founder's script comes first.** Before anything is recorded, the script model (NVIDIA Nemotron on Nebius, or
+GLM on Workers AI) reads the prompt (who the demo is for, and why) and what the map knows (pages, headings, menus,
+listings, filters and their values) and writes the voice-over a founder would give: the promise, why each moment
+matters, the payoff. It's printed and saved as `story.txt` in the run folder.
+
+The script also picks the **shots**: up to six pages of the site to show, in the order the script talks about them,
+and the task to finish on, if the prompt asks for one. Each page is reached the way a visitor would (its link on
+screen, else straight there) and shown with a smooth scroll down it, recorded frame by frame, so the viewer sees it
+move. A site that is one long page is shown the same way, a screen at a time. A page that can't be reached is left out
+of the video and listed in the run's result; the narration never mentions it.
+
+After recording, the script is laid over the video in the founder's words, and changed only where the recording
+proves it wrong: the value really chosen, a price band the site had greyed out, and the products and prices actually
+shown. Setup steps on screen (install commands, tool names) are left out unless the script is about them.
+
+**Give it the product's own words:** `--repo https://github.com/you/your-product` reads the repo's README (its first
+6,000 characters, through GitHub's API; nothing is cloned or run) so the script says what the product is and why in
+your words, not only what the site's headings say. `--product "one line"` does the same in a sentence.
 
 `explore` browses the site once, the way a visitor would: it closes the newsletter pop-up, opens each menu (by hover
 or click), groups pages into templates (`/collections/:handle`), and reads each listing's filters (groups, values, and
 how they appear in the URL). It only navigates and reads: it never submits, signs up or types into a pop-up, and on a
-site that blocks automated browsers it stops with a message instead of trying to get around it. The demo then runs
-like a founder's walkthrough: the menu opens on camera, the filter panel opens, the filters are ticked, and it ends by
+site that blocks automated browsers it stops with a message instead of trying to get around it. It waits for pages
+that draw their content after loading (React and similar). When the prompt asks for a task, the demo ends on it like a
+founder's walkthrough: the menu opens on camera, the filter panel opens, the filters are ticked, and it ends by
 highlighting two or three results. A filter the site has disabled ("no results") is reported, and the narration says so.
 
 With an index, **Jev drives on its own**; no LLM plans the route. Without one, an LLM plans the route once and Jev
 handles every step that needs judgment.
 
-**Narrated:** add `--voice apollo` (or a female voice such as `thalia`) for a Deepgram Aura-2 voice (about $0.03 per
-1,000 characters), with or without `--index`. `--voice-speed 1.2` speaks faster at the same pitch. With a map, the
-script is the founder's (above), about 17 words per step; the Allbirds demo above runs about a minute. Add `--music track.mp3` for a background
-bed: it plays alone for 2 s before the narrator starts and after they finish, loops to the video's length, and
-dips gently whenever the narrator speaks (the voice is also softened to sit inside it). Use a track
-you have the rights to (Pixabay Music and the YouTube Audio Library allow commercial use).
+**Narrated:** add `--voice chris` (or `eric`, `will`, `sarah`, `jessica`) for an ElevenLabs voice; set
+`ELEVENLABS_API_KEY` first. The whole voice-over is spoken in **one take**, so it sounds like one person talking, not
+sentences stitched together, and the video's timing follows the voice: each moment is held for as long as its words
+take. Without an ElevenLabs key, use `--voice apollo` (or a female voice such as `thalia`): Deepgram Aura-2 on
+Cloudflare (about $0.03 per 1,000 characters), one clip per line of the script; `--voice-speed 1.2` speaks it faster at
+the same pitch. Either works with or without `--index`. With a map, the script is the founder's (above); the Allbirds
+demo above runs about a minute.
+
+Add `--music track.mp3` for a background bed: it plays alone for 2 s before the narrator starts and after they finish,
+loops to the video's length, and dips gently whenever the narrator speaks (the voice is also softened to sit inside
+it). Use a track you have the rights to (Pixabay Music and the YouTube Audio Library allow commercial use).
 
 Use **staging and test accounts**. The tool clicks real buttons and submits real forms. To see the route first,
 add `--dry-run`: the run stops before the first action that changes data (a submit, save, invite or toggle) and
@@ -160,8 +182,9 @@ menus); Zara stopped in under a second ("Access Denied").
 
 ## Choose where the language models run
 
-Jev makes every click decision, and the voice is Deepgram Aura-2; both run on Cloudflare. The language-model steps
-(planning the route, reading page text and form values, writing the narration script) can run on either provider:
+Jev makes every click decision, on Cloudflare. The voice is ElevenLabs (`--voice chris` and the others above, with
+`ELEVENLABS_API_KEY`) or Deepgram Aura-2 on Cloudflare (`--voice apollo`). The language-model steps (planning the route, reading page text and form values,
+writing the founder's script and fitting it to the recording) can run on either provider:
 
 | Provider | Models | Setup |
 |---|---|---|
@@ -209,6 +232,8 @@ Any other OpenAI-compatible provider is one entry in `LLM_PROVIDERS` in `src/jev
 | `DEMO_<NAME>` | — | values for `{{NAME}}` placeholders in prompts |
 | `JDF_LLM_PROVIDER` | `cloudflare` | where route plans, page reading and scripts run: `cloudflare` or `nebius` |
 | `NEBIUS_API_KEY`, `JDF_NEBIUS_MODEL` | — / `nvidia/Nemotron-3-Ultra-550b-a55b` | Nebius Token Factory key and model (thinking off) |
+| `ELEVENLABS_API_KEY`, `JDF_ELEVEN_MODEL` | — / `eleven_multilingual_v2` | the ElevenLabs voice (`--voice chris`, `eric`, `will`, `sarah`, `jessica`) |
+| `GITHUB_TOKEN` | — | optional, for `--repo`: raises GitHub's rate limit for reading the README |
 
 browser-harness telemetry and update checks are off by default (`BH_TELEMETRY=0`, `BH_UPDATE_CHECK=0`).
 
