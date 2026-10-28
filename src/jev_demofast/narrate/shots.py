@@ -25,10 +25,12 @@ def offerable(index):
 
 def validate(raw, index, log=print):
     """The model's shots, checked against the map: home first, pages from the map only, at most MAX_SHOTS after
-    home, a task only as the last shot. [] when no shot beyond the opening is left (no tour), except on a one-page site,
-    where the opening alone is the tour."""
+    home, a task only as the last shot. With no shot beyond the opening, the opening alone is the tour, down the home
+    page. [] (no tour) only when the reply isn't a shot list at all."""
+    if not isinstance(raw, list):
+        return []
     pages = offerable(index)
-    raw = [s for s in raw if isinstance(s, dict)] if isinstance(raw, list) else []
+    raw = [s for s in raw if isinstance(s, dict)]
     opening = {"page": "/", "show": ""}
     if raw and raw[0].get("page") == "/":
         opening["show"] = str(raw[0].get("show") or "")
@@ -49,7 +51,6 @@ def validate(raw, index, log=print):
         shots.append({"page": shot["page"], "show": show, **({"items": True} if shot.get("items") is True else {})})
     task = shots[-1:] if shots and "task" in shots[-1] else []
     shots = [s for s in shots if "task" not in s][:MAX_SHOTS - len(task)] + task
-    if shots:
-        return [opening] + shots
-    one_page = not [r for r in index if not r.startswith("_") and r != "/"]
-    return [opening] if one_page else []  # a one-page site (onecentdemo.com): its tour is down its home page
+    # Nothing beyond home: tour down the home page. Hunting for a goal instead, reafi.ai's demo went home → /register →
+    # home six times; onecentdemo.com's (one page) got stuck and lasted 6 s
+    return [opening] + shots
