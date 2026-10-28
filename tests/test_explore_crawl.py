@@ -55,11 +55,14 @@ def fake_session(pages, home_title=None):
                         return {"dialog": False, "hidden_roots": 0}
                     if js == HEADINGS_JS:
                         return p["headings"]
+                    if js == explore_mod.SIGN_IN_FORM_JS:
+                        return p.get("password", False)
                     return None
 
                 def call(self, method, **params):
                     if method == "Page.navigate":
                         outer.path, outer.menu_open = "/" + params["url"].split("/", 3)[3], False
+                        outer.path = pages[outer.path].get("redirect", outer.path)  # the site sends you elsewhere
                     if method == "Input.dispatchMouseEvent":
                         outer.menu_open = False
             return B()
@@ -259,3 +262,57 @@ def test_a_page_that_draws_its_content_after_loading_is_read_once_it_has(monkeyp
     session.browser = property(browser)
     m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
     assert m["/"]["texts"] == ["Welcome"]
+
+
+def walled_site():
+    """A site whose dashboard and portfolio need an account: a visitor lands on its sign-in page instead."""
+    pages = site_pages()
+    pages["/"]["links"] += [{"label": "Dashboard", "to": "/dashboard"}, {"label": "Portfolio", "to": "/portfolio"},
+                            {"label": "Log in", "to": "/login"}]
+    pages["/dashboard"] = pages["/portfolio"] = {"redirect": "/login"}
+    pages["/login"] = {"title": "Sign in", "text": "Welcome back", "links": [], "actions": [], "password": True,
+                       "headings": ["Welcome back"]}
+    return pages
+
+
+def test_pages_behind_a_login_are_skipped_and_listed(monkeypatch):
+    """reafi.ai: its app pages sent the explorer to /login, the map kept them with the login page's content, and the
+    demo went to the login page and back. Pages behind a login aren't mapped; the site record lists them instead."""
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    session, _ = fake_session(walled_site())
+    said = []
+    m = explore("https://shop.test/", cf=None, log=said.append, session=session)
+    assert "/dashboard" not in m and "/portfolio" not in m
+    assert m["_site"]["behind_login"] == ["/dashboard", "/portfolio"]
+    assert "/pages/about" in m and "/collections/:handle" in m  # the rest of the site is mapped as usual
+    assert any("behind a login: /dashboard, /portfolio" in line and "jev-demofast chrome --open" in line
+               for line in said)
+
+
+def test_a_sign_in_page_reached_by_its_own_link_is_not_a_wall(monkeypatch):
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    session, _ = fake_session(walled_site())
+    m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
+    assert "/login" not in m["_site"]["behind_login"]
+
+
+def test_a_redirect_to_a_page_without_a_sign_in_form_is_not_a_wall(monkeypatch):
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    pages = site_pages()
+    pages["/"]["links"].append({"label": "Old about", "to": "/about-us"})
+    pages["/about-us"] = {"redirect": "/pages/about"}
+    session, _ = fake_session(pages)
+    m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
+    assert m["_site"]["behind_login"] == []
+
+
+def test_a_sign_in_page_is_mapped_and_marked(monkeypatch):
+    """Kept for a task that signs in with {{EMAIL}}; marked so a tour never shows it."""
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    session, _ = fake_session(walled_site())
+    m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
+    assert m["/login"]["sign_in"] is True and m["/pages/about"]["sign_in"] is False

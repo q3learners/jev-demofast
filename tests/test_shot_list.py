@@ -68,3 +68,10 @@ def test_a_site_with_pages_but_no_page_to_show_is_toured_down_its_home_page():
         {"page": "/", "show": "the promise"}]
     assert validate([{"page": "/nope"}], MAP, log=lambda m: None) == [{"page": "/", "show": ""}]
     assert validate([], MAP, log=lambda m: None) == [{"page": "/", "show": ""}]
+
+
+def test_a_sign_in_page_is_never_a_shot():
+    """reafi.ai: /login and /register were the only pages besides home, and the tour went to them."""
+    from jev_demofast.narrate.shots import offerable
+    m = {"/login": {"texts": ["Welcome back"], "sign_in": True}, "/about": {"texts": ["Our story"], "sign_in": False}}
+    assert list(offerable(m)) == ["/about"]

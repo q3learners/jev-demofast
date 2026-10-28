@@ -12,11 +12,12 @@ STATUS_LINE = re.compile(r"\d{3}\b")  # "429 Too Many Requests", "404": the map 
 
 def offerable(index):
     """The pages a shot can show: each route's example paths with the route's first texts. Error pages and pages
-    with no text are left out: there is nothing true to say over them."""
+    with no text are left out: there is nothing true to say over them. So are sign-in and sign-up forms: a tour that
+    shows one ends on a door the viewer can't see past."""
     pages = {}
     for route, entry in index.items():
         texts = entry.get("texts") or []
-        if route.startswith("_") or not texts or STATUS_LINE.match(texts[0]):
+        if route.startswith("_") or not texts or STATUS_LINE.match(texts[0]) or entry.get("sign_in"):
             continue
         for path in entry.get("examples") or ([] if ":" in route else [route]):
             pages[path] = texts[:TEXTS]
