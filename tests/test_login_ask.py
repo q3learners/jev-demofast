@@ -89,3 +89,22 @@ def test_the_ask_line_is_flushed_for_a_host(monkeypatch):
     monkeypatch.setattr(ask, "_ready", lambda stream, timeout: False)
     ask_stdin(Q, stream=stdin_with(""), log=lambda m: None)
     assert flushed
+
+
+CHOICE = ask.choice_question("This account is partway through setup. How should the demo go on?",
+                             [("record", "Record what this account can show"), ("stop", "Stop")], qid="q4")
+
+
+def test_terminal_choice():
+    assert ask_terminal(CHOICE, input=lambda p: "2", getpass=lambda p: "", out=lambda *a: None) == \
+        {"id": "q4", "choice": "stop"}
+    assert ask_terminal(CHOICE, input=lambda p: "9", getpass=lambda p: "", out=lambda *a: None) is None
+
+
+def test_stdin_choice_and_garbage(monkeypatch):
+    monkeypatch.setattr(ask, "_ready", lambda stream, timeout: True)
+    said = []
+    got = ask_stdin(CHOICE, stream=stdin_with(json.dumps({"id": "q4", "choice": "record"}) + "\n"), log=said.append)
+    assert got == {"id": "q4", "choice": "record"} and json.loads(said[0][5:])["choices"][0]["id"] == "record"
+    assert ask_stdin(CHOICE, stream=stdin_with(json.dumps({"id": "q4", "choice": "pay"}) + "\n"),
+                     log=lambda m: None) is None

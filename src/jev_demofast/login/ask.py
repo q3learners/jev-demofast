@@ -22,9 +22,18 @@ def question(forms, why, retry=None, qid="q1"):
     return {"id": qid, "why": why, "forms": forms, "retry": retry}
 
 
+def choice_question(why, choices, qid):
+    """{"id", "why", "choices": [{"id", "label"}]}: one of a few ways to go on (after mapping, when the account
+    can't show the demo)."""
+    return {"id": qid, "why": why, "choices": [{"id": c, "label": label} for c, label in choices]}
+
+
 def _valid(q, answer):
     if not isinstance(answer, dict) or answer.get("id") != q["id"] or answer.get("skip"):
         return None
+    if "choices" in q:
+        ok = answer.get("choice") in {c["id"] for c in q["choices"]}
+        return {"id": q["id"], "choice": answer["choice"]} if ok else None
     form = next((f for f in q["forms"] if f["id"] == answer.get("form")), None)
     values = answer.get("values")
     if form is None or not isinstance(values, dict) or not all(isinstance(values.get(f["name"]), str)
@@ -36,6 +45,13 @@ def _valid(q, answer):
 def ask_terminal(q, input=input, getpass=_getpass.getpass, out=print):
     """Ask in the terminal. Returns the answer, or None to skip."""
     out(q["why"] + (f"\n{q['retry']}" if q.get("retry") else ""))
+    if "choices" in q:
+        for i, c in enumerate(q["choices"], 1):
+            out(f"  {i}. {c['label']}")
+        choice = input(f"Which one (1-{len(q['choices'])})? ").strip()
+        if not choice.isdigit() or not 1 <= int(choice) <= len(q["choices"]):
+            return None
+        return {"id": q["id"], "choice": q["choices"][int(choice) - 1]["id"]}
     forms = q["forms"]
     if len(forms) == 1:
         form = forms[0]
