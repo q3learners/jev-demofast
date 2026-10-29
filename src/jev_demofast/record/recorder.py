@@ -31,9 +31,16 @@ class Recorder:
         if not self.out:
             return
         if node is not None:
+            # Flutter's accessibility tree is drawn invisible (filter: opacity(0) on k12.tutorq.ai): an outline on one of
+            # its nodes never shows, so there the outline is a box drawn on top of the element instead.
             self.s.browser.evaluate(f"(() => {{ const e=window.__jevFast?.nodes.get({node}); if (!e) return; "
-                                    "e.scrollIntoView({block:'center', behavior:'instant'}); e.style.outline='3px solid #f59e0b'; "
-                                    "e.style.outlineOffset='3px'; })()")
+                                    "e.scrollIntoView({block:'center', behavior:'instant'}); "
+                                    "if (!e.closest('flt-semantics-host')) { e.style.outline='3px solid #f59e0b'; "
+                                    "e.style.outlineOffset='3px'; return; } "
+                                    "const r=e.getBoundingClientRect(), b=document.createElement('div'); b.id='__jdf_outline'; "
+                                    "Object.assign(b.style, {position:'fixed', zIndex:2147483647, pointerEvents:'none', "
+                                    "left:(r.left-6)+'px', top:(r.top-6)+'px', width:(r.width+6)+'px', height:(r.height+6)+'px', "
+                                    "border:'3px solid #f59e0b', borderRadius:'6px'}); document.body.appendChild(b); })()")
             if badge:
                 self.s.browser.evaluate(f"""(() => {{ const e=window.__jevFast?.nodes.get({node}); if (!e) return;
                   const r=e.getBoundingClientRect(), b=document.createElement('div'); b.id='__jdf_badge';
@@ -46,7 +53,8 @@ class Recorder:
         if node is not None:
             self.s.browser.evaluate(f"(() => {{ const e=window.__jevFast?.nodes.get({node}); "
                                     "if (e) { e.style.outline=''; e.style.outlineOffset=''; } "
-                                    "document.getElementById('__jdf_badge')?.remove(); })()")
+                                    "document.getElementById('__jdf_badge')?.remove(); "
+                                    "document.getElementById('__jdf_outline')?.remove(); })()")
         self.pending.append((data, hold, round(time.time() - self.t0, 3)))
 
     def event(self, message):
