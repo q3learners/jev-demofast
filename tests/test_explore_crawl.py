@@ -335,3 +335,139 @@ def test_a_link_to_a_file_that_isnt_a_page_is_skipped_and_the_rest_is_mapped(mon
     m = explore("https://shop.test/", cf=None, log=said.append, session=session)
     assert "/visuals/architecture.svg" not in m and "/pages/about" in m and "/collections/:handle" in m
     assert any("skipped /visuals/architecture.svg" in line for line in said)
+
+
+# k12.tutorq.ai as the explorer saw it on 29 October (Flutter, logged out): no links, no headings, buttons that navigate
+# and two pages with fields where only Clef may let a button be clicked.
+K12 = {
+    "/setup/who": {"text": "TutorQ K-12\nParents and students set up differently, so we ask first.\nWho is this?\nSign in\n"
+                           "I'm a parent\nI'm a student",
+                   "buttons": {"Sign in": "/setup/account?mode=signin", "I'm a parent": "/setup/account?mode=signup",
+                               "I'm a student": "/setup/student"}},
+    "/setup/student": {"text": "TutorQ K-12\nHow do you get in?\nBack\nMy parent gave me a login",
+                       "buttons": {"Back": "/setup/who", "My parent gave me a login": "/setup/kid"}},
+    "/setup/account?mode=signin": {"text": "TutorQ K-12\nWelcome back.\nEmail\nPassword", "password": True,
+                                   "buttons": {"Back": "/setup/who", "I need an account": "/setup/account?mode=signup",
+                                               "Sign in": "/today"}},
+    "/setup/account?mode=signup": {"text": "TutorQ K-12\nYour account, current step\nEmail", "password": True,
+                                   "buttons": {"Back": "/setup/who", "I already have one": "/setup/account?mode=signin"}},
+    "/setup/kid": {"text": "TutorQ K-12\nSign in to your subjects\nYour login ID", "password": True,
+                   "buttons": {"Back": "/setup/student", "Sign in": "/today"}},
+    "/today": {"text": "Today", "buttons": {}},
+}
+
+
+class K12Clef:
+    s = type("S", (), {"check_model": "@cf/cloudflare/clef"})()
+
+    def __init__(self):
+        self.asked = []
+
+    def yes(self, q, state, **k):
+        self.asked.append(state["button"])
+        return {"Back": .98, "I need an account": .93, "I already have one": .95, "Sign in": .02}.get(state["button"], 0)
+
+
+def fake_flutter_session(pages=K12, clicks=None):
+    clicks = [] if clicks is None else clicks
+
+    class FlutterSite:
+        host, is_flutter = "k12.test", True
+
+        def __init__(self, url, fresh=False, isolated=False):
+            self.path = "/setup/who"  # the app sends a visitor there
+            self.observe()
+
+        @property
+        def browser(self):
+            outer = self
+
+            class B:
+                def evaluate(self, js, **k):
+                    p = pages[outer.path]
+                    if js == READ_LISTING_JS:
+                        return {"item_links": 0, "groups": []}
+                    if js == COVERED_JS:
+                        return {"dialog": False, "hidden_roots": 0}
+                    if js in (VISIBLE_LINKS_JS, HEADINGS_JS):
+                        return []
+                    if js == explore_mod.SIGN_IN_FORM_JS:
+                        return p.get("password", False)
+                    return None
+
+                def call(self, method, **params):
+                    if method == "Page.navigate":
+                        outer.path = "/" + params["url"].split("/", 3)[3]
+                        outer.path = outer.path if outer.path in pages else "/setup/who"
+                        outer.observe()
+                    if method == "Page.captureScreenshot":
+                        return {"data": ""}
+                    return {}
+            return B()
+
+        def observe(self):
+            p = pages[self.path]
+            actions = [{"kind": "click", "node": i, "id": f"e{i}", "role": "button", "label": label,
+                        "rect": {"x": 10, "y": 30 * i, "w": 40, "h": 20}} for i, label in enumerate(p["buttons"], 1)]
+            if p.get("password"):
+                actions.append({"kind": "fill", "node": 90, "id": "e90", "role": "textbox", "label": "Email",
+                                "rect": {"x": 10, "y": 300, "w": 200, "h": 20}})
+            self.page = {"url": "https://k12.test" + self.path, "title": "TutorQ K-12", "text": p["text"],
+                         "actions": actions, "h": 780}
+            return self.page
+
+        def elements(self):
+            from jev_demofast.browser.elements import observed
+            return observed(self.page)
+
+        def act(self, e, kind, text=None):
+            clicks.append((self.path, e["label"]))
+            self.path = pages[self.path]["buttons"].get(e["label"], self.path)
+            self.observe()
+
+        def hover(self, e): pass
+        def wait_loaded(self, timeout=10): pass
+        def wait_for_page(self): return "settled"
+        def next_frame(self): pass
+        def close(self): pass
+    return FlutterSite
+
+
+def test_a_flutter_site_is_mapped_through_its_buttons(monkeypatch):
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    clicks = []
+    m = explore("https://k12.test/", cf=K12Clef(), log=lambda x: None, session=fake_flutter_session(clicks=clicks))
+    assert {"/setup/who", "/setup/student", "/setup/account?mode=signin", "/setup/account?mode=signup",
+            "/setup/kid"} <= set(m)
+    assert {"label": "I'm a student", "to": "/setup/student", "via": "button"} in m["/setup/who"]["links"]
+    assert m["/setup/account?mode=signin"]["sign_in"] and m["/setup/kid"]["sign_in"] and not m["/setup/who"]["sign_in"]
+    assert ("/setup/kid", "Sign in") not in clicks and ("/setup/account?mode=signin", "Sign in") not in clicks
+    assert "/today" not in m  # only a submit leads there, and nothing was submitted
+
+
+def test_a_flutter_page_without_headings_gets_texts_from_its_text(monkeypatch):
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    m = explore("https://k12.test/", cf=K12Clef(), log=lambda x: None, session=fake_flutter_session())
+    texts = m["/setup/who"]["texts"]
+    assert texts[:3] == ["TutorQ K-12", "Parents and students set up differently, so we ask first.", "Who is this?"]
+    assert not {"Sign in", "I'm a parent", "I'm a student"} & set(texts)
+
+
+def test_button_discovery_respects_the_time_budget(monkeypatch):
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    calls = []
+    real = explore_mod.discover
+    monkeypatch.setattr(explore_mod, "discover", lambda *a, **k: calls.append(1) or real(*a, **k))
+    clock = iter([0.0] + [10_000.0] * 1000)  # the budget runs out right after the explorer starts
+    monkeypatch.setattr(explore_mod.time, "monotonic", lambda: next(clock))
+    m = explore("https://k12.test/", cf=K12Clef(), log=lambda x: None, session=fake_flutter_session())
+    assert calls == [] and "/setup/who" in m
+
+
+def test_a_normal_site_never_runs_button_discovery(monkeypatch):
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod, "discover", lambda *a, **k: (_ for _ in ()).throw(AssertionError("discovered")))
+    session, _ = fake_session(site_pages())
+    m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
+    assert "/collections/:handle" in m and m["/pages/about"]["texts"] == ["Our story"]

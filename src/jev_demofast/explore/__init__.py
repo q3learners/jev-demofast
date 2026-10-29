@@ -45,15 +45,25 @@ def _wait_for_content(s):
     s.observe()
 
 
+def _flutter_texts(text, els):
+    """A Flutter page has no h1-h3 (k12.tutorq.ai had none): its first lines of text that aren't a control's label."""
+    controls = {e["label"].strip().split("\n")[0].strip() for e in els}
+    lines = [t.strip() for t in (text or "").split("\n")]
+    return list(dict.fromkeys(t for t in lines if 3 <= len(t) < 120 and t not in controls))[:10]
+
+
 def _read_page(s):
     """What the map records about the screen the session is on."""
     els = s.elements()
     listing = read_listing(s)
+    texts = s.browser.evaluate(HEADINGS_JS) or []
+    if not texts and getattr(s, "is_flutter", False):
+        texts = _flutter_texts(s.page.get("text"), els)
     return {"links": s.browser.evaluate(VISIBLE_LINKS_JS) or [],
             "buttons": [{"label": e["label"][:80], "submit": False} for e in els if e["role"] == "button"
                         and e["label"]][:60],
             "fields": [e["label"][:60] for e in els if "fill" in e["actions"] and e["label"]][:30],
-            "texts": s.browser.evaluate(HEADINGS_JS) or [], "sign_in": s.browser.evaluate(SIGN_IN_FORM_JS) is True,
+            "texts": texts, "sign_in": s.browser.evaluate(SIGN_IN_FORM_JS) is True,
             **listing}
 
 
@@ -98,7 +108,7 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
         if site["blocked"]:
             log(f"blocked: {site['blocked']!r} on {url}; nothing explored (bot protection is never worked around)")
             return _write(found, out)
-        queue, visited, entries = [], [], {}
+        queue, visited, entries, button_paths = [], [], {}, set()
 
         def visit(path):
             _wait_for_content(s)
@@ -107,6 +117,10 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
                 site["popups"].append({"seen_on": path, "cleared_by": how})
             page = _read_page(s)
             visited.append(path)
+            if getattr(s, "is_flutter", False) and time.monotonic() - started < max_minutes * 60:
+                found_links = discover(s, origin, path, cf, log)  # Flutter navigates with buttons, not links
+                button_paths.update(link["to"] for link in found_links)
+                page["links"] += [link for link in found_links if link not in page["links"]]
             for link in page["links"]:
                 if link["to"] not in queue and not blocked(link["label"]):
                     queue.append(link["to"])
@@ -119,11 +133,12 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
         how = clear_popups(cf, s, log)  # a pop-up that arrived late would hide the navigation
         if how:
             site["popups"].append({"seen_on": home, "cleared_by": how})
-        site["menus"] = discover_menus(s, log)
+        # A Flutter app has no links to reveal, and its top-bar buttons navigate: its pages come from discover()
+        site["menus"] = [] if getattr(s, "is_flutter", False) else discover_menus(s, log)
         menu_paths = [i["to"] for m in site["menus"] for i in m["items"]]
         queue[:0] = [p for p in dict.fromkeys(menu_paths) if p not in queue]  # menu destinations first
         while queue and len(visited) < max_pages and time.monotonic() - started < max_minutes * 60:
-            routes = templates(list(dict.fromkeys([home] + queue + visited)))
+            routes = templates(list(dict.fromkeys([home] + queue + visited)), keep=frozenset(button_paths))
             todo = [p for p in pick_examples(list(dict.fromkeys(visited + queue)), routes, EXAMPLES_PER_ROUTE)
                     if p not in visited]
             if not todo:
@@ -146,7 +161,7 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
                 log(f"  skipped {path}: {e}")       # linked an .svg), costs that link, not the map
                 if path not in visited:
                     visited.append(path)
-        routes = templates(list(pages))
+        routes = templates(list(pages), keep=frozenset(button_paths))
         for path, page in pages.items():
             entries[routes[path]] = _merge(entries.get(routes[path]), page, path, origin + path)
         for entry in entries.values():
