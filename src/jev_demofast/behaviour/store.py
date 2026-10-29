@@ -11,10 +11,15 @@ from pathlib import Path
 MAPS = Path("~/.cache/jev-demofast/maps").expanduser()
 
 
+def _private_dir(maps):
+    maps.mkdir(parents=True, exist_ok=True)
+    os.chmod(maps, 0o700)  # it holds what demo accounts show (kids' names)
+
+
 def _secret(maps):
     key = maps / ".key"
+    _private_dir(maps)
     if not key.exists():
-        maps.mkdir(parents=True, exist_ok=True)
         fd = os.open(key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "wb") as f:
             f.write(secrets.token_bytes(32))
@@ -37,6 +42,8 @@ def load_map(host, email):
 
 def save_map(m, host, email):
     path = map_path(host, email)
-    with open(path, "w") as f:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)  # never through a planted link
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w") as f:
         json.dump(m, f, indent=1)
     return path

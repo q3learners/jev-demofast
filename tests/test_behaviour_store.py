@@ -40,3 +40,17 @@ def test_save_then_load_round_trips():
 
 def test_unknown_account_loads_none():
     assert load_map("k12.test", "nobody@demo.test") is None
+
+
+def test_maps_are_private_and_never_written_through_a_link(maps, tmp_path):
+    """Security review: a blueprint holds what the demo account shows (kids' names): the folder is 0700, each map
+    0600, and a symlink planted at a map's path is never written through."""
+    path = save_map(empty(), "k12.test", "parent@demo.test")
+    assert os.stat(maps).st_mode & 0o777 == 0o700 and os.stat(path).st_mode & 0o777 == 0o600
+    elsewhere = tmp_path / "elsewhere.json"
+    elsewhere.write_text("untouched")
+    path.unlink()
+    path.symlink_to(elsewhere)
+    with pytest.raises(OSError):
+        save_map(empty(), "k12.test", "parent@demo.test")
+    assert elsewhere.read_text() == "untouched"
