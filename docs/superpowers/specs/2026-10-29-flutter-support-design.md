@@ -116,15 +116,41 @@ A button is clicked during discovery only if **all** of these hold:
 
 - `guards.blocked(label)` is false (sign up, register, create account, delete, log out, Google/Apple sign-in…).
 - `guards.CHANGES` doesn't match the label (save, submit, send, pay, confirm, verify…).
-- **The page has no text or password field.** Flutter's accessibility layer has no `<form>`, so there's no reliable
-  way to tell a form's submit button from a navigation button. A page with a field gets no button clicks during
-  discovery at all. (Decision made while writing the spec. It drops "I need an account" and "I already have one" on
-  the account pages, but both screens are reached from `/setup/who` anyway. If wrong, the cost is a missed link,
-  never a submitted form.)
+- **On a page with a text or password field, Clef must say it only navigates.** Flutter's accessibility layer has
+  no `<form>`, so the code can't tell a form's submit button from a navigation button. The check model (Clef,
+  `cf.yes` with the screenshot, as `drive/check.py` uses it) is asked per button, and the button is clicked only if
+  the score is at least **0.8** (`NAVIGATES_CONFIDENT`). A lower score, an error, a timeout, or a check model that
+  can't read images means no click. Pages without fields don't need the check.
 
-Measured against K-12: on `/setup/who`, "I'm a parent", "I'm a student" and both "Sign in" buttons are clicked. On
-`/setup/student`, "Back", "My parent gave me a login" and "I'm setting it up myself" are clicked. Nothing on
-`/setup/account` or `/setup/kid` is clicked: they have fields, and `/setup/kid`'s "Sign in" would submit.
+  The question, as measured:
+  > A visitor is on this page and has typed nothing into its fields. Does clicking the button named in 'button' only
+  > take them to another page or step (navigation such as Back, or a link to a different form), without sending this
+  > page's form or signing in?
+
+  with `true` = "yes: it only navigates", `false` = "no: it sends the form, signs in, or changes something", and the
+  state `{url, button, fields_on_page, buttons_on_page, visible_text}`.
+
+  **Measured on k12.tutorq.ai (29 October, 3 runs each, the same score every run, 0.4–0.9 s per call):**
+
+  | Page | Button | Score | Truth |
+  |---|---|---|---|
+  | `/setup/account?mode=signin` | I need an account | 0.93 | navigates |
+  | `/setup/account?mode=signin` | Back | 0.98 | navigates |
+  | `/setup/account?mode=signup` | I already have one | 0.95 | navigates |
+  | `/setup/account?mode=signup` | Back | 0.98 | navigates |
+  | `/setup/kid` | Back | 0.98 | navigates |
+  | `/setup/account?mode=signin` | Show password | 0.09 | stays (a toggle) |
+  | `/setup/account?mode=signin` | Sign in | 0.03 | submits |
+  | `/setup/kid` | Sign in | 0.02 | submits |
+
+  0.8 sits in the gap (0.09 to 0.93). It's one site and eight buttons, so the floor is set on the safe side: a miss
+  costs a link, a wrong pass an empty form sent (the explorer never types, so a submit carries no data, but it must
+  still not happen).
+
+Expected on K-12: on `/setup/who`, "I'm a parent", "I'm a student" and both "Sign in" buttons are clicked (no fields,
+no check). On `/setup/student`, "Back", "My parent gave me a login" and "I'm setting it up myself". On the account
+pages, "Back", "I need an account" and "I already have one", after Clef. On `/setup/kid`, "Back" only. Its "Sign in"
+scores 0.02 and is never clicked.
 
 ### The login wall on a Flutter app
 
@@ -145,7 +171,8 @@ pages through buttons, and logged out it can't. Recognising the wall is part of 
   - a fake Flutter page with no text until the placeholder is clicked is read after turning on accessibility;
   - discovery records a button's destination as a link and queues it;
   - a blocked or data-changing button is never clicked;
-  - on a page with a text or password field, no button is clicked;
+  - on a page with a text or password field, a button is clicked only when the (faked) check scores ≥ 0.8, and never
+    when the check errors, times out or can't read images;
   - a button-found path keeps its query and isn't grouped with its neighbours, while link-found paths group as before;
   - a button that stays on the same address adds no link;
   - the layer is turned on again after a reload.
