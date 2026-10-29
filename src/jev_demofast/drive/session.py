@@ -20,6 +20,12 @@ WATCH_STATE = """(() => { const w = window.__jdfWatch; if (!w) return null; cons
   return {since_start: now - w.start, since_last: w.last === null ? null : now - w.last}; })()"""
 NEXT_FRAME = """new Promise(done => { setTimeout(done, 100);
   requestAnimationFrame(() => requestAnimationFrame(done)); })"""
+# Flutter draws on its own surface: k12.tutorq.ai had no text and no controls to read until its accessibility layer
+# was on. Clicking the layer's placeholder from JavaScript turns it on (about 1.5 s there); a reload turns it off.
+FLUTTER_JS = "!!document.querySelector('flutter-view, flt-glass-pane')"
+ENABLE_FLUTTER_JS = "(() => { const p = document.querySelector('flt-semantics-placeholder'); p?.click(); return !!p; })()"
+SEMANTICS_READY_JS = "document.querySelectorAll('flt-semantics').length > 0"
+FLUTTER_WAIT_S, FLUTTER_POLL_S = 3.0, 0.1
 
 
 def origin(url):
@@ -42,6 +48,8 @@ class Session:
         self.start_url = url
         self.host = urlparse(url).hostname
         self.browser = Browser(url, isolated=isolated)
+        self.is_flutter = False
+        self.flutter_ready()
         if fresh:  # start logged out: clear this site's cookies and storage (isolated profile only)
             self.clear_site(url)
             self.browser.call("Page.navigate", url=url)
@@ -63,10 +71,31 @@ class Session:
         while time.monotonic() < deadline:
             try:
                 if self.browser.evaluate("document.readyState") == "complete":
+                    self.flutter_ready()
                     return
             except StalePage:
                 pass
             time.sleep(0.05)
+
+    def flutter_ready(self, timeout=FLUTTER_WAIT_S):
+        """On a Flutter page, turn its accessibility layer on and wait for it. True once it's on; False for any other
+        page (one check, nothing else) or if the layer never appeared."""
+        try:
+            self.is_flutter = self.browser.evaluate(FLUTTER_JS) is True
+            if not self.is_flutter:
+                return False
+            self.browser.evaluate(ENABLE_FLUTTER_JS)
+        except (StalePage, RuntimeError):
+            return False
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                if self.browser.evaluate(SEMANTICS_READY_JS) is True:
+                    return True
+            except (StalePage, RuntimeError):
+                pass
+            time.sleep(FLUTTER_POLL_S)
+        return False
 
     def observe(self):
         self.page = self.browser.observe(screenshot=False)
