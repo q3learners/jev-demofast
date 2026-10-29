@@ -17,7 +17,7 @@ def _landing(outcome):
 
 def _job(m, chain):
     acts = m["actions"]
-    steps = [i for i in chain if acts[i]["outcome"] not in SKIPPED]
+    steps = [i for i in chain["steps"] if acts[i]["outcome"] not in SKIPPED]
     if not steps:
         return None
     first = acts[steps[0]]["screen"]
@@ -33,7 +33,7 @@ def _job(m, chain):
     result = result or (f"{added[7:-1]} added" if added else "")
     screens = {acts[i]["screen"] for i in steps} | {_landing(acts[i]["outcome"]) for i in steps} - {None}
     gone = any(m["screens"].get(k, {}).get("gone") for k in screens)
-    state = m["account"]["state"] or "unknown"
+    state = chain.get("state") or "unknown"  # as it was when the chain ran, not as it is now
     return {"name": acts[steps[0]]["control"], "steps": steps, "result": result, "repeatable": state == "set up",
             "needs": state, "proven": bool(result) and not stopped and not gone,
             **({"stopped": stopped} if stopped else {})}

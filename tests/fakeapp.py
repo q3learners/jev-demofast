@@ -37,12 +37,16 @@ class _Browser:
 
 class FakeApp(Session):
     def __init__(self, state="set up", flutter=False, sections=("Home", "Kids", "Subjects", "Settings"),
-                 strand_after=None, subjects=40, real_page=False):
+                 strand_after=None, subjects=40, real_page=False, create_leaves=False, tips=False,
+                 kid_buttons=False, search=False):
         self.state, self.flutter, self.tabs = state, flutter, list(sections)
         self.strand_after, self.stranded, self.subjects = strand_after, False, subjects
         # real_page: like a browser, a dialog leaves the page behind it in the element list, and the page record
         # is only updated when observed (live, 29 October: Continue pressed 40 times; an off-site link missed)
         self.real_page = real_page
+        # review cases: Create hands off to a partner site with a form; a "Tips" dialog from a plain click; kids
+        # drawn as buttons (Flutter); a search box on the Subjects tab
+        self.create_leaves, self.tips, self.kid_buttons, self.search = create_leaves, tips, kid_buttons, search
         self.kids, self.form, self.dialog, self.new_kid = ["Ava", "Leo"], {}, None, None
         self.pressed, self.typed = [], []
         self.browser, self.hazards, self.own_email, self.money_step = _Browser(self), True, "parent@demo.test", None
@@ -59,7 +63,9 @@ class FakeApp(Session):
         if p == "/home":
             return ["Welcome back", "Your family at a glance"], tabs + [("button", "Upgrade", "click")]
         if p == "/kids":
-            return ["Your kids", *self.kids], tabs + [("link", k, "click") for k in self.kids] + \
+            return ["Your kids", *self.kids], tabs + [("button" if self.kid_buttons else "link", k, "click")
+                                                      for k in self.kids] + \
+                ([("button", "Tips", "click")] if self.tips else []) + \
                 [("button", "Add a kid", "click"), ("button", "Delete", "click")]
         if p.startswith("/kids/") and p.count("/") == 2 and p != "/kids/new":
             return [f"{p.split('/')[2].title()}, 14", "Their subjects"], tabs
@@ -75,7 +81,8 @@ class FakeApp(Session):
         if p == "/kids/setup/done":
             return ["All set", f"{self.new_kid} is ready"], tabs + [("button", "Done", "click")]
         if p == "/subjects":
-            return ["Subjects"], tabs + [("link", f"Subject {i}", "click") for i in range(1, self.subjects + 1)]
+            return ["Subjects"], tabs + ([("searchbox", "Search subjects", "fill")] if self.search else []) + \
+                [("link", f"Subject {i}", "click") for i in range(1, self.subjects + 1)]
         if p.startswith("/subjects/"):
             return [f"Subject {p.split('/')[2]}", "Lessons"], tabs
         if p == "/settings":
@@ -83,6 +90,8 @@ class FakeApp(Session):
                                          ("button", "Log out", "click")]
         if p == "/offsite":
             return ["Help centre"], []
+        if p == "/partner":
+            return ["Partner signup"], [("textbox", "Nickname", "fill"), ("button", "Create", "click")]
         if p == "/upgrade":
             return ["Start your Pro plan", "Card number"], tabs + [("textbox", "Card number", "fill"),
                                                                    ("button", "Continue", "click")]
@@ -108,7 +117,8 @@ class FakeApp(Session):
         else:
             text = "\n".join(([self.dialog["title"]] if self.dialog else []) + texts +
                              [label for _, label, _ in controls])
-        url = "https://help.other.test/" if self.path == "/offsite" else ORIGIN + self.path
+        url = "https://help.other.test" + ("/partner" if self.path == "/partner" else "/") \
+            if self.path in ("/offsite", "/partner") else ORIGIN + self.path
         self.page = {"url": url, "title": "TutorQ K-12", "text": text}
         return self.page
 
@@ -179,7 +189,9 @@ class FakeApp(Session):
                 self.path]
             self.form = {}
         elif label == "Create":
-            self.path = "/kids"
+            self.path = "/partner" if self.create_leaves and self.path == "/contacts/new" else "/kids"
+        elif label == "Tips":
+            self.dialog = {"title": "Tips", "buttons": ["Got it"]}
         elif label == "Done":
             self.path = "/kids"
         elif label == "Help centre":

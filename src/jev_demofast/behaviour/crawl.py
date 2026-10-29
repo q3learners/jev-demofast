@@ -11,7 +11,7 @@ from ..drive.guards import HazardStop, on_site
 from ..drive.session import StalePage
 from . import forms, jobs
 from .model import add_action, add_screen, empty, merge, typed_by_mapping
-from .rules import may_press, outcome
+from .rules import ADDS, may_press, outcome
 from .screens import nav_labels, read_screen, sections
 
 ACCOUNT = """You see the first screen of a web app right after signing in. Is the account still partway through a setup
@@ -129,7 +129,7 @@ def _back_to(w, section, url, key):
                 _press_label(w, section)
             if read_screen(w.s)[0] == key:
                 return True
-        except (HazardStop, StalePage, TimeoutError):
+        except Exception:  # a refused tab, a page that moved, a sign-in that failed: try the next way
             continue
     return False
 
@@ -153,13 +153,19 @@ def _walk_section(w, section, start_key):
             w.m["left"].append(f"{section}: way back lost")
             return
         _, screen = read_screen(w.s)
-        if screen["fields"]:
+        if screen["fields"]:  # the form first; then the screen's other controls (a search box isn't the whole tab)
             forms.handle(w.s, w.cf, w.m, key, screen, w.m["account"]["state"], w.budget, w.log, w.now, section)
-            continue
-        groups, skipped = {}, {}
+            if not _back_to(w, section, url, key):
+                w.m["left"].append(f"{section}: way back lost")
+                return
+        tried = {a["control"] for a in w.m["actions"] if a["screen"] == key}
+        groups, skipped, run_role = {}, {}, None
         for label in screen["controls"]:
-            if label in w.nav:
+            if label in w.nav or label in tried:
                 continue
+            if screen["fields"] and not any(_first_line(x) == label and x["role"] in ("link", "tab")
+                                            for x in w.s.elements()):
+                continue  # beside a form only links are followed: its buttons belong to the form (never sent empty)
             if steps >= w.budget.steps_per_section or w.out_of_time():
                 w.m["left"].append(f"{section}: out of steps")
                 return
@@ -169,8 +175,10 @@ def _walk_section(w, section, start_key):
                 if e is not None and e.get("role") not in ("switch", "checkbox", "radio"):
                     add_action(w.m, key, label, "click", f"refused: {label}", w.now)
                 continue
+            if e["role"] != run_role:  # a list is a run of same-role controls: a different role ends it
+                groups, run_role = {}, e["role"]
             last = groups.get(e["role"])
-            if last and last[1] >= w.budget.items_per_list:
+            if last and last[1] >= w.budget.items_per_list and not ADDS.search(label):  # never an add
                 skipped[last[0]] = skipped.get(last[0], 0) + 1
                 continue
             steps += 1
@@ -192,11 +200,14 @@ def _walk_section(w, section, start_key):
             after_key, after = read_screen(w.s)
             add_action(w.m, key, label, "click", outcome(key, before, after_key, after["kind"], w.s.page.get("text"),
                                                          []), w.now)
-            if after["kind"] == "dialog":
-                w.s.browser.call("Input.dispatchKeyEvent", type="keyDown", key="Escape", code="Escape",
-                                 windowsVirtualKeyCode=27)
-                w.s.browser.call("Input.dispatchKeyEvent", type="keyUp", key="Escape", code="Escape",
-                                 windowsVirtualKeyCode=27)
+            if after["kind"] == "dialog":  # answered like any dialog, then back; a dialog is never queued
+                add_screen(w.m, after_key, {**after, "section": section}, w.now)
+                forms.handle(w.s, w.cf, w.m, after_key, after, w.m["account"]["state"], w.budget, w.log, w.now,
+                             section)
+                if not _back_to(w, section, url, key):
+                    w.m["left"].append(f"{section}: way back lost")
+                    return
+                continue
             if after_key != key:
                 if after_key not in w.m["screens"]:
                     add_screen(w.m, after_key, {**after, "section": section}, w.now)
@@ -241,7 +252,12 @@ def crawl(new_session, cf, origin, saved=None, budget=None, log=print, now=None)
             if _unchanged(w, saved, section, key, screen):
                 continue
             add_screen(w.m, key, {**screen, "kind": "tab", "section": section}, w.now)
-            _walk_section(w, section, key)
+            try:
+                _walk_section(w, section, key)
+            except Exception as err:  # costs this section, never the map (and what was already added is kept)
+                w.m["left"].append(f"{section}: stopped ({type(err).__name__})")
+                log(f"blueprint: {section} stopped ({type(err).__name__})")
+                continue
             log(f"blueprint: {section} walked")
     finally:
         w.s.close()

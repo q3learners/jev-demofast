@@ -50,8 +50,9 @@ def merge(saved, fresh, seen_sections, now):
     m["actions"] = [dict(a) for a in saved["actions"]]
     moved = [add_action(m, a["screen"], a["control"], a["did"], a["outcome"], a["tried_at"], a.get("values"))
              for a in fresh["actions"]]  # a fresh action's index in the merged list
-    chains = [list(c) for c in saved.get("chains", [])] + [[moved[i] for i in c] for c in fresh.get("chains", [])]
-    m["chains"] = [c for n, c in enumerate(chains) if c not in chains[:n]]
+    chains = [dict(c) for c in saved.get("chains", [])] + \
+        [{**c, "steps": [moved[i] for i in c["steps"]]} for c in fresh.get("chains", [])]
+    m["chains"] = [c for n, c in enumerate(chains) if c["steps"] not in [d["steps"] for d in chains[:n]]]
     m["jobs"] = fresh["jobs"] or saved["jobs"]
     return m
 

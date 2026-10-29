@@ -7,7 +7,9 @@ demo may need to show it, and finishing it uses it up. Clef judges that click fr
 import base64
 import re
 
-from ..drive.guards import HazardStop
+from urllib.parse import urlparse
+
+from ..drive.guards import HazardStop, on_site
 from ..drive.session import StalePage
 from .model import add_action, add_screen
 from .rules import may_press, outcome
@@ -24,6 +26,7 @@ FINISH_TRUE, FINISH_FALSE = ("yes: it finishes or leaves a one-time setup step",
                              "no: it adds or moves within something that can be done again")
 ONE_TIME = 0.5  # at or above: not pressed; a model error counts as finishing
 EMAIL = re.compile(r"e-?mail", re.I)
+OWN_EMAIL = "(the account's email)"  # what the map records for it: the email itself never reaches a file or a prompt
 
 
 def _label(e):
@@ -32,12 +35,14 @@ def _label(e):
 
 def _values(cf, fields, screen, m, own_email, log):
     """{label: value} for the fields; {} when the model can't make them (nothing is then submitted)."""
-    used = sorted({v for a in m["actions"] for v in (a.get("values") or {}).values()})
+    used = sorted({v for a in m["actions"] for v in (a.get("values") or {}).values()} - {OWN_EMAIL})
     try:
         made = cf.chat_json(cf.s.read_model, MAKE_VALUES, {"fields": fields, "screen": screen["texts"][:8],
                                                            "names_used": used[:40]}).get("values") or {}
     except Exception as err:
         log(f"blueprint: no values for {screen['title']!r} ({type(err).__name__}); not submitted")
+        return {}
+    if not isinstance(made, dict):  # the model answered with the wrong shape: nothing is typed
         return {}
     values = {f: str(v) for f, v in made.items() if f in fields and v}
     for f in fields:  # an email is only ever the account's own
@@ -90,6 +95,7 @@ def handle(s, cf, m, key, screen, account, budget, log, now, section=None):
     """Walk the form, dialog or wizard on screen. Returns the indexes of the actions it recorded, also kept as one
     chain in m["chains"] (the jobs are made from chains)."""
     chain, filled, typed, steps = [], set(), [], 0
+    state = m["account"].get("state") or account
     nav = set(m["account"].get("sections") or [])
     try:
         while steps < budget.steps_per_section:
@@ -107,10 +113,16 @@ def handle(s, cf, m, key, screen, account, budget, log, now, section=None):
                         return chain
                     for f in fields:
                         if _label(f) in values:
-                            s.act(f, "fill", text=values[_label(f)])
-                            typed.append(values[_label(f)])
+                            v = values[_label(f)]
+                            try:
+                                s.act(f, "fill", text=v)
+                            except (HazardStop, StalePage):  # a value the rules refuse: this form isn't sent
+                                chain.append(add_action(m, key, _label(f), "fill", f"refused: {_label(f)}", now))
+                                return chain
+                            if v != s.own_email:  # an outcome ("added '…'") never names the account's email
+                                typed.append(v)
                             chain.append(add_action(m, key, _label(f), "fill", "no change", now,
-                                                    values={_label(f): values[_label(f)]}))
+                                                    values={_label(f): OWN_EMAIL if v == s.own_email else v}))
                     filled.add(key)
                 buttons = [e for e in s.elements() if "click" in e["actions"] and _label(e) not in nav
                            and may_press(e, filled_here=key in filled)]
@@ -138,6 +150,11 @@ def handle(s, cf, m, key, screen, account, budget, log, now, section=None):
             except StalePage:
                 return chain
             s.wait_for_page()
+            landed = s.observe().get("url") or ""
+            if not on_site(landed, s.host):  # a hand-off to another site (a partner's form) is never filled
+                chain.append(add_action(m, key, _label(e), "click",
+                                        f"refused: leaves the app → {urlparse(landed).hostname or landed}", now))
+                return chain
             after_key, after = read_screen(s)
             if after["kind"] != "dialog" and after["fields"]:
                 after_key, after = read_screen(s, wizard=True)
@@ -149,5 +166,5 @@ def handle(s, cf, m, key, screen, account, budget, log, now, section=None):
             key, screen = after_key, after
         return chain
     finally:
-        if chain:
-            m["chains"].append(chain)
+        if chain:  # the account's state as it was when this ran: a job keeps it (one-time or repeatable)
+            m["chains"].append({"steps": chain, "state": state})

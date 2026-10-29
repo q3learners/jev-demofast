@@ -56,7 +56,7 @@ def test_adding_a_kid_is_walked_through_the_dialog_and_wizard():
     did = {(a["screen"], a["control"]): a["outcome"] for a in m["actions"]}
     assert did[("/kids/new · dialog: Add Maya first?", "Skip")] == "not pressed"
     assert any(k.startswith("/kids/setup/done") for k in m["screens"])
-    assert m["chains"] and len(m["chains"][0]) >= 6
+    assert m["chains"] and len(m["chains"][0]["steps"]) >= 6 and m["chains"][0]["state"] == "set up"
 
 
 def test_partway_setup_stops_before_finishing():
