@@ -5,8 +5,9 @@ import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
-from ..drive.guards import HazardStop
+from ..drive.guards import HazardStop, on_site
 from ..drive.session import StalePage
 from . import forms
 from .model import add_action, add_screen, empty, merge
@@ -54,6 +55,7 @@ class _Walk:
     now: str
     log: object
     nav: list = field(default_factory=list)
+    host: str = ""
 
     def out_of_time(self):
         return time.monotonic() - self.started >= self.budget.total_s
@@ -63,29 +65,46 @@ def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _press(w, label):
-    """Press the clickable element labelled `label` through Session.act. False if it isn't on screen."""
-    e = next((e for e in w.s.elements() if "click" in e["actions"]
-              and (e["label"] or "").strip().split("\n")[0] == label), None)
-    if e is None:
+def _first_line(e):
+    return (e.get("label") or "").strip().split("\n")[0]
+
+
+def _press(w, e):
+    """Press this element, the one the rules judged, through Session.act. False if the rules don't allow it."""
+    if "click" not in e["actions"] or not may_press(e, filled_here=False):
         return False
     w.s.act(e, "click")
     w.s.wait_for_page()
     return True
 
 
+def _press_label(w, label):
+    """Press the first element labelled `label` that the rules allow (a switch of the same name is never it)."""
+    e = next((e for e in w.s.elements() if "click" in e["actions"] and _first_line(e) == label
+              and may_press(e, filled_here=False)), None)
+    return e is not None and _press(w, e)
+
+
+def _left_the_app(w):
+    """The host the session is on now, when it isn't the app's; else None."""
+    url = w.s.page.get("url") or ""
+    return None if on_site(url, w.host) else (urlparse(url).hostname or url)
+
+
 def _find_sections(w, first_key):
     """Press the first navigation label that leads elsewhere; the labels on both screens are the app's sections."""
-    home = nav_labels(w.s)
+    allowed = {_first_line(e) for e in w.s.elements() if "click" in e["actions"] and may_press(e, filled_here=False)}
+    home = [label for label in nav_labels(w.s) if label in allowed]
     for label in home:
-        e = next(e for e in w.s.elements() if (e["label"] or "").strip().split("\n")[0] == label)
-        if not may_press(e, filled_here=False):
-            continue
         try:
-            _press(w, label)
+            if not _press_label(w, label):
+                continue
         except (HazardStop, StalePage):
             continue
         key, _ = read_screen(w.s)
+        if _left_the_app(w):
+            _back_to(w, None, w.m["screens"][first_key]["url"], first_key)
+            continue
         if key != first_key:
             found = sections(home, nav_labels(w.s))
             _back_to(w, None, w.m["screens"][first_key]["url"], first_key)
@@ -96,6 +115,8 @@ def _find_sections(w, first_key):
 def _back_to(w, section, url, key):
     """Back on screen `key`: reopen its address, else press the section's tab, else a new session and the tab.
     False when the way back is lost."""
+    if not on_site(url, w.host):  # never navigates off the app
+        return False
     for attempt in ("address", "tab", "new session"):
         try:
             if attempt == "new session":
@@ -105,7 +126,7 @@ def _back_to(w, section, url, key):
                 w.s.browser.call("Page.navigate", url=url)
                 w.s.wait_loaded()
             if attempt in ("tab", "new session") and section and read_screen(w.s)[0] != key:
-                _press(w, section)
+                _press_label(w, section)
             if read_screen(w.s)[0] == key:
                 return True
         except (HazardStop, StalePage, TimeoutError):
@@ -142,7 +163,8 @@ def _walk_section(w, section, start_key):
             if steps >= w.budget.steps_per_section or w.out_of_time():
                 w.m["left"].append(f"{section}: out of steps")
                 return
-            e = next((e for e in w.s.elements() if (e["label"] or "").strip().split("\n")[0] == label), None)
+            e = next((e for e in w.s.elements() if _first_line(e) == label and may_press(e, filled_here=False)),
+                     None) or next((e for e in w.s.elements() if _first_line(e) == label), None)
             if e is None or not may_press(e, filled_here=False):
                 if e is not None and e.get("role") not in ("switch", "checkbox", "radio"):
                     add_action(w.m, key, label, "click", f"refused: {label}", w.now)
@@ -154,11 +176,18 @@ def _walk_section(w, section, start_key):
             steps += 1
             before = w.s.page.get("text", "")
             try:
-                _press(w, label)
+                _press(w, e)
             except HazardStop:
                 add_action(w.m, key, label, "click", f"refused: {label}", w.now)
                 continue
             except StalePage:
+                continue
+            gone_to = _left_the_app(w)
+            if gone_to:
+                add_action(w.m, key, label, "click", f"refused: leaves the app → {gone_to}", w.now)
+                if not _back_to(w, section, url, key):
+                    w.m["left"].append(f"{section}: way back lost")
+                    return
                 continue
             after_key, after = read_screen(w.s)
             add_action(w.m, key, label, "click", outcome(key, before, after_key, after["kind"], w.s.page.get("text"),
@@ -188,7 +217,7 @@ def crawl(new_session, cf, origin, saved=None, budget=None, log=print, now=None)
     """The blueprint of the signed-in app at `origin`, merged into `saved`. new_session(url) is a signed-in session
     (Login.session)."""
     w = _Walk(new_session(origin + "/"), new_session, cf, empty(), budget or Budget(), time.monotonic(),
-              now or _now(), log)
+              now or _now(), log, host=urlparse(origin).hostname)
     try:
         first_key, first = read_screen(w.s)
         w.m["account"]["state"] = account_state(cf, first, log)
@@ -204,7 +233,7 @@ def crawl(new_session, cf, origin, saved=None, budget=None, log=print, now=None)
             if w.out_of_time():
                 w.m["left"].append(f"{section}: not walked (out of time)")
                 continue
-            if not _back_to(w, None, w.m["screens"][first_key]["url"], first_key) or not _press(w, section):
+            if not _back_to(w, None, w.m["screens"][first_key]["url"], first_key) or not _press_label(w, section):
                 w.m["left"].append(f"{section}: couldn't open it")
                 continue
             key, screen = read_screen(w.s)

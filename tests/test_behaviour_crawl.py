@@ -85,3 +85,30 @@ def test_the_total_budget_stops_the_walk():
     app = FakeApp()
     m = walk(app, budget=crawl_mod.Budget(total_s=0))
     assert m["left"] == [f"{s}: not walked (out of time)" for s in ("Home", "Kids", "Subjects", "Settings")]
+
+
+def test_a_press_that_leaves_the_app_is_not_walked():
+    """Security review: a landing on another site is recorded and left, never walked."""
+    m = walk(FakeApp())
+    did = {(a["screen"], a["control"]): a["outcome"] for a in m["actions"]}
+    assert did[("/settings", "Help centre")] == "refused: leaves the app → help.other.test"
+    assert not any("help.other.test" in (s.get("url") or "") for s in m["screens"].values())
+
+
+def test_the_element_judged_is_the_element_pressed():
+    """Security review: with two controls labelled alike, the press lands on the one the rules allowed, never on
+    another found again by its label."""
+    app = FakeApp()
+    app._controls = lambda: [("switch", "Kids", "click"), ("tab", "Kids", "click")]
+    roles = []
+    app.act = lambda e, kind, text=None: roles.append(e["role"])
+    w = crawl_mod._Walk(app, app.restart, Model(SET_UP), {}, crawl_mod.Budget(), 0, "t1", lambda m: None)
+    crawl_mod._press_label(w, "Kids")
+    assert roles == ["tab"]
+
+
+def test_a_section_tab_that_changes_things_is_never_a_section():
+    """Security review: section tabs pass the same press rules as every other control."""
+    app = FakeApp(sections=("Home", "Kids", "Apply"))
+    m = walk(app)
+    assert "Apply" not in m["account"]["sections"] and "Apply" not in app.pressed

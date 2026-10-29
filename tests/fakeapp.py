@@ -74,7 +74,10 @@ class FakeApp(Session):
         if p.startswith("/subjects/"):
             return [f"Subject {p.split('/')[2]}", "Lessons"], tabs
         if p == "/settings":
-            return ["Settings"], tabs + [("switch", "Email me weekly", "click"), ("button", "Log out", "click")]
+            return ["Settings"], tabs + [("switch", "Email me weekly", "click"), ("button", "Help centre", "click"),
+                                         ("button", "Log out", "click")]
+        if p == "/offsite":
+            return ["Help centre"], []
         if p == "/upgrade":
             return ["Start your Pro plan", "Card number"], tabs + [("textbox", "Card number", "fill"),
                                                                    ("button", "Continue", "click")]
@@ -99,7 +102,8 @@ class FakeApp(Session):
         else:
             text = "\n".join(([self.dialog["title"]] if self.dialog else []) + texts +
                              [label for _, label, _ in controls])
-        self.page = {"url": ORIGIN + self.path, "title": "TutorQ K-12", "text": text}
+        url = "https://help.other.test/" if self.path == "/offsite" else ORIGIN + self.path
+        self.page = {"url": url, "title": "TutorQ K-12", "text": text}
         return self.page
 
     def elements(self):
@@ -172,6 +176,8 @@ class FakeApp(Session):
             self.path = "/kids"
         elif label == "Done":
             self.path = "/kids"
+        elif label == "Help centre":
+            self.path = "/offsite"
         elif label == "Upgrade":
             self.path = "/upgrade"
         elif label in self.kids:
