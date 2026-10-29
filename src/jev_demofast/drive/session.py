@@ -22,10 +22,11 @@ NEXT_FRAME = """new Promise(done => { setTimeout(done, 100);
   requestAnimationFrame(() => requestAnimationFrame(done)); })"""
 # Flutter draws on its own surface: k12.tutorq.ai had no text and no controls to read until its accessibility layer
 # was on. Clicking the layer's placeholder from JavaScript turns it on (about 1.5 s there); a reload turns it off.
-FLUTTER_JS = "!!document.querySelector('flutter-view, flt-glass-pane')"
+# The view is drawn after the load (complete at 0.92 s, flutter-view at 1.35 s): at load, only the loader is there.
+FLUTTER_JS = "!!(window._flutter || document.querySelector('flutter-view, flt-glass-pane'))"
 ENABLE_FLUTTER_JS = "(() => { const p = document.querySelector('flt-semantics-placeholder'); p?.click(); return !!p; })()"
 SEMANTICS_READY_JS = "document.querySelectorAll('flt-semantics').length > 0"
-FLUTTER_WAIT_S, FLUTTER_POLL_S = 3.0, 0.1
+FLUTTER_WAIT_S, FLUTTER_POLL_S = 6.0, 0.1
 
 
 def origin(url):
@@ -82,15 +83,15 @@ class Session:
         page (one check, nothing else) or if the layer never appeared."""
         try:
             self.is_flutter = self.browser.evaluate(FLUTTER_JS) is True
-            if not self.is_flutter:
-                return False
-            self.browser.evaluate(ENABLE_FLUTTER_JS)
         except (StalePage, RuntimeError):
             return False
-        deadline = time.monotonic() + timeout
+        if not self.is_flutter:
+            return False
+        deadline, clicked = time.monotonic() + timeout, False
         while time.monotonic() < deadline:
             try:
-                if self.browser.evaluate(SEMANTICS_READY_JS) is True:
+                clicked = clicked or self.browser.evaluate(ENABLE_FLUTTER_JS) is True  # once its placeholder exists
+                if clicked and self.browser.evaluate(SEMANTICS_READY_JS) is True:
                     return True
             except (StalePage, RuntimeError):
                 pass
