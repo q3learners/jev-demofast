@@ -54,7 +54,7 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
             rec.snap(1.5)
         rec.commit({"do": "open", "shot": 0, "show": shots[0]["show"]}, s.observe())
         landed = urlparse(s.page["url"]).hostname  # "allbirds.com" as typed lands on www.allbirds.com
-        known = offerable(index)
+        known, buttons = offerable(index), button_labels(index)
         if len(shots) == 1:
             _show_down(s, rec, shots[0]["show"])
         else:
@@ -68,7 +68,8 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
                 for action in rec.actions[before:]:
                     action.update(shot=i, show=shot["show"])
                 continue
-            problem = _reach(s, rec, shot["page"], i, shot["show"], landed, known.get(shot["page"], []))
+            problem = _reach(s, rec, shot["page"], i, shot["show"], landed, known.get(shot["page"], []),
+                             buttons.get(_path(shot["page"]), []))
             if problem:
                 rec.discard()
                 result["skipped"].append(shot["page"])
@@ -114,13 +115,29 @@ def arrived(page_now, page, host, landed, texts):
     return any(" ".join(t.split()) in screen for t in texts if t)
 
 
-def _reach(s, rec, page, i, show, landed, texts):
+def button_labels(index):
+    """{path: [label, ...]}: the buttons the explorer found leading to each page (a Flutter app has no href links)."""
+    found = {}
+    for route, entry in index.items():
+        for link in (entry.get("links") or []) if not route.startswith("_") else []:
+            if link.get("via") == "button" and link["label"] not in found.setdefault(_path(link["to"]), []):
+                found[_path(link["to"])].append(link["label"])
+    return found
+
+
+def _first_line(label):
+    return (label or "").strip().split("\n")[0].strip()
+
+
+def _reach(s, rec, page, i, show, landed, texts, labels=()):
     """Go to the shot's page on camera. Returns why it couldn't, or None once there."""
     if _path(s.page["url"]) == _path(page) and urlparse(s.page["url"]).hostname == landed:
         return None
     _to_top(s)  # the navigation is at the top, where a person would scroll back to
     action = {"shot": i, "show": show}
     link = next((e for e in s.elements() if "click" in e["actions"] and _leads_to(s, e, page, landed)), None)
+    if link is None and labels:  # no href leads there: the button the map found leading there, clicked on camera
+        link = next((e for e in s.elements() if "click" in e["actions"] and _first_line(e["label"]) in labels), None)
     try:
         if link:
             got = click_on_camera(s, rec, link, {"do": "click", "target": link["label"], **action})

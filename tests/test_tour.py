@@ -14,6 +14,10 @@ TEXT = {"/": "Understand what you're learning.", "/k12": "Your child's personal 
         "/campus": "Every student deserves help"}
 MAP = {route: {"kind": "page", "examples": [route], "texts": [text]} for route, text in TEXT.items()}
 MAP["/pricing"] = {"kind": "page", "examples": ["/pricing"], "texts": ["Plans for every family"]}
+# A Flutter app's page reached only through a button (no href): the map found it by clicking it
+BUTTONS = {"/": {"I'm a student\nIt's for my own school work.": "/student"}}
+LINKS["/student"], TALL["/student"], TEXT["/student"] = [], 780, "How do you get in?"
+MAP["/student"] = {"kind": "page", "examples": ["/student"], "texts": ["How do you get in?"]}
 
 
 def fake_session(slow=()):
@@ -62,12 +66,17 @@ def fake_session(slow=()):
 
         def elements(self):
             return [{"node": n, "label": f"Go {to}", "actions": ["click"], "role": "link"}
-                    for n, to in enumerate(LINKS[self._path()])]
+                    for n, to in enumerate(LINKS[self._path()])] + \
+                [{"node": 100 + n, "label": label, "actions": ["click"], "role": "button"}
+                 for n, label in enumerate(BUTTONS.get(self._path(), {}))]
 
         def href(self, node):
-            return f"https://{HOST}{LINKS[self._path()][node]}"
+            return None if node >= 100 else f"https://{HOST}{LINKS[self._path()][node]}"
 
         def act(self, e, kind, text=None):
+            if e["node"] >= 100:
+                self.navigated_by_button = True
+                return self._go(list(BUTTONS[self._path()].values())[e["node"] - 100])
             path = LINKS[self._path()][e["node"]]
             if path in slow:
                 raise TimeoutError("timed out")
@@ -262,3 +271,24 @@ def test_every_scroll_the_tool_makes_lands_at_once():
     calls = [(str(p.relative_to(src)), m.group(0)) for p in src.rglob("*.py") for m in re.finditer(
         r"(scrollTo|scrollBy|scrollIntoView)\(.*", p.read_text())]  # to the line's end: arguments nest parentheses
     assert calls and not [c for c in calls if "instant" not in c[1]], calls
+
+
+def test_a_page_reached_by_a_button_is_clicked_on_camera():
+    """k12.tutorq.ai: its pages are reached with buttons, which have no href. The map knows which button leads where."""
+    index = {**MAP, "/": {**MAP["/"], "links": [{"label": "I'm a student", "to": "/student", "via": "button"}]}}
+    recs = []
+    tour.run(Cf(), "https://tutorq.test/", [HOME, {"page": "/student", "show": "the way in"}], index,
+             log=lambda m: None, session=fake_session(), recorder=lambda out, s, blur_typed=True: recs.append(FakeRecorder(out, s)) or recs[-1])
+    click = recs[0].actions[-1]
+    assert click["do"] == "click" and click["target"].startswith("I'm a student") and click["shot"] == 1
+
+
+def test_without_a_matching_button_the_tour_still_cuts():
+    result, actions = play([HOME, {"page": "/student", "show": "the way in"}])  # MAP has no button links
+    assert actions[-1]["do"] == "go" and result["verified"] is True
+
+
+def test_button_labels_come_from_the_maps_button_links():
+    index = {"/": {"links": [{"label": "Go", "to": "/a"}, {"label": "I'm a student", "to": "/student", "via": "button"}]},
+             "/x": {"links": [{"label": "Back", "to": "/student", "via": "button"}]}, "_site": {}}
+    assert tour.button_labels(index) == {"/student": ["I'm a student", "Back"]}
