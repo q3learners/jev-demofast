@@ -13,20 +13,43 @@ route once, then Jev, a small decision model, picks each element in about a quar
 ![A real run, decision by decision](docs/run.svg)
 
 **Two ways to try it:**
-- **In your browser, nothing to install:** [app.onecentdemo.com](https://app.onecentdemo.com). Sign in and get $1 of
-  free credit, four demos.
+- **In your browser, nothing to install:** [app.onecentdemo.com](https://app.onecentdemo.com). Sign in and get $3 of
+  free credit, twelve demos.
 - **On your own machine:** this repository. It's free and MIT-licensed; you bring your own keys and a demo costs cents.
+
+## Built on NVIDIA Nemotron and Nebius Token Factory
+
+The script, the plans and the page reading run on **NVIDIA Nemotron 3 Ultra** through
+[Nebius Token Factory](https://tokenfactory.nebius.com): on the hosted app always, and on your machine with
+`JDF_LLM_PROVIDER=nebius`. Nemotron does the thinking a founder would. Jev (on Cloudflare Workers AI) makes the
+quarter-second click decisions, a vision model checks the result, and ElevenLabs speaks the voice-over.
+
+| Step | What Nemotron does | Thinking |
+|---|---|---|
+| **The founder's script** | Reads the brief and the site's map, writes the voice-over and picks the pages to show | on |
+| **Fitting the narration** | Fits the script over what was actually recorded, correcting only what differs | on |
+| **Planning a route** | Turns a goal into the steps to get there (Open Source → Trending → This week) | off |
+| **Reading pages** | Picks filter values, form values and the items worth pointing out | off |
+
+Why the split: with thinking off, the script came out as captions of the screen ("Select $126 to $150 range"); on, it
+keeps a founder's voice and sticks to the facts on the page, and it runs only twice per video. Plans run on every
+step, so speed wins there: of the four Nemotron models on Token Factory, Ultra with thinking off planned the GitHub
+route best, in about 1 s; with thinking on, every model took 4–15 s. Measured with Nemotron doing this work, a
+sentence becomes a narrated video in about 16 s. The models and their settings are in
+[`src/jev_demofast/config.py`](src/jev_demofast/config.py).
 
 ## Quickstart
 
-You need Python 3.12+, [uv](https://docs.astral.sh/uv/), ffmpeg, Google Chrome and a Cloudflare account with Workers
-AI. Jev, the model that makes each click decision, is paid from AI Gateway credits: add a few dollars under AI → AI
+You need Python 3.12+, [uv](https://docs.astral.sh/uv/), ffmpeg, Google Chrome, a
+[Nebius Token Factory](https://tokenfactory.nebius.com) API key for Nemotron, and a Cloudflare account with Workers AI.
+Jev, the model that makes each click decision, is paid from AI Gateway credits: add a few dollars under AI → AI
 Gateway → Credits.
 
 ```bash
 git clone https://github.com/q3learners/jev-demofast && cd jev-demofast
 uv sync
 export CLOUDFLARE_ACCOUNT_ID=...  CLOUDFLARE_API_TOKEN=...    # a token with Workers AI access
+export JDF_LLM_PROVIDER=nebius  NEBIUS_API_KEY=...             # Nemotron on Token Factory (else Workers AI's GLM)
 
 uv run jev-demofast chrome      # starts its own Chrome; your browser and logins are untouched
 uv run jev-demofast demo "Show how to find hot trending projects on GitHub this week" \
@@ -60,9 +83,6 @@ in once with `jev-demofast chrome --open <your login page>` and later demos star
 uv run jev-demofast index ../my-nextjs-app --out app-index.json
 uv run jev-demofast demo "Invite a teammate as a member" --url https://staging.example.com --index app-index.json
 ```
-
-**Run the language models on NVIDIA Nemotron.** Set `JDF_LLM_PROVIDER=nebius` and `NEBIUS_API_KEY` from
-[Nebius Token Factory](https://tokenfactory.nebius.com).
 
 ## What you get
 
