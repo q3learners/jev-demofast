@@ -54,11 +54,11 @@ def _type_secret(s, label, value):
 
 def _fill(s, fields, values):
     for field in fields:
-        e = next((e for e in s.elements() if "fill" in e["actions"] and _first_line(e["label"]) == field["label"]), None)
-        if field["secret"] and e is None:  # a password input: never observed, typed only where it has focus
+        if field["secret"]:  # a password input: never observed, never through act, typed only where it has focus
             if not _type_secret(s, field["label"], values[field["name"]]):
                 return f"no field for {field['label']}"
             continue
+        e = next((e for e in s.elements() if "fill" in e["actions"] and _first_line(e["label"]) == field["label"]), None)
         if e is None:
             return f"no field for {field['label']}"
         s.act(e, "fill", text=values[field["name"]])

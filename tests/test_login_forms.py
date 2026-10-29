@@ -94,3 +94,15 @@ def test_password_fields_are_secret():
         {"name": "your-login-id", "label": "Your login ID", "secret": False},
         {"name": "passcode", "label": "Passcode", "secret": True}]
     assert [f["id"] for f in offered()] == ["f1", "f2"]
+
+
+def test_only_password_inputs_are_secret():
+    """Security review: a plain input labelled like a secret ("PIN", "Zip code") is a plain field; only a password
+    input is secret, so a secret only ever goes where a password input has focus."""
+    PAGES["/setup/pin"] = (["TutorQ K-12", "Enter your PIN please"], ["PIN"], ["Password"], 0.95)
+    INDEX["/setup/pin"] = {"sign_in": True, "examples": ["/setup/pin"]}
+    try:
+        pin = next(f for f in offered() if f["page"] == "/setup/pin")
+        assert pin["fields"][0] == {"name": "pin", "label": "PIN", "secret": False}
+    finally:
+        del PAGES["/setup/pin"], INDEX["/setup/pin"]

@@ -154,3 +154,9 @@ def test_the_tour_never_cuts_to_a_hazard_address():
         def next_frame(self): pass
     problem = tour._reach(S(), None, "/account/logout", 1, "x", "k12.test", [])
     assert problem and navigated == []
+
+
+@pytest.mark.parametrize("address", ["/account/%64elete", "/#/account/logout", "/x?next=%2Fbilling"])
+def test_encoded_and_hash_routed_hazard_addresses_are_refused(address):
+    """Security review: percent-encoding and Flutter's hash routes hid the hazard word from the check."""
+    assert not guards.may_open("", address)

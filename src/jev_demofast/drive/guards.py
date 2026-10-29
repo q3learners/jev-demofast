@@ -1,6 +1,6 @@
 """Safety rules every run follows, whichever driver decides the steps."""
 import re
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from ..config import secret
 
@@ -39,8 +39,8 @@ EMAIL_ADDRESS = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 def may_open(label, address):
     """A logged-in run opens a page by its address only if neither its label nor its path and query is a hazard
     ("/account/logout", "/account/deleteKid", "?action=destroy"): opening by address never passes Session.act."""
-    u = urlparse(address or "")
-    words = re.sub(r"[^a-zA-Z]+", " ", re.sub(r"([a-z])([A-Z])", r"\1 \2", f"{u.path} {u.query}"))
+    u = urlparse(unquote(unquote(address or "")))  # "/account/%64elete", "?next=%252Fbilling"
+    words = re.sub(r"[^a-zA-Z]+", " ", re.sub(r"([a-z])([A-Z])", r"\1 \2", f"{u.path} {u.query} {u.fragment}"))
     return not hazard(label or "") and not hazard(words)
 
 

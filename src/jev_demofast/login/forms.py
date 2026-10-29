@@ -9,7 +9,6 @@ import base64
 import re
 
 from ..cloudflare import sees_images
-from .ask import secret_field
 
 SIGNS_IN_CONFIDENT = 0.8
 QUESTION = ("Is this a form for signing in to an account that already exists (not for creating a new account, and not "
@@ -76,7 +75,8 @@ def sign_in_forms(s, origin, index, cf, log=print):
         if not _signs_in(cf, page, plain + secret, buttons, shot):
             continue
         lines = [t.strip() for t in (page.get("text") or "").split("\n") if t.strip()]
-        fields = [{"name": _slug(l), "label": l, "secret": secret_field(l)} for l in plain] + \
+        # only a password input is secret: a secret is typed only where one has focus, never through act
+        fields = [{"name": _slug(l), "label": l, "secret": False} for l in plain] + \
                  [{"name": _slug(l), "label": l, "secret": True} for l in secret]
         seen.append({"page": path, "lines": lines, "controls": {_first_line(e["label"]) for e in els},
                      "fields": fields})
