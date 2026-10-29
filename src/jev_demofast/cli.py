@@ -36,6 +36,8 @@ Prefer `jev-demofast chrome --open <url>`: log in once in the tool's own profile
 def choose_browser(a, settings):
     """Point browser-harness at the isolated Chrome (default) or, opt-in, the user's own running Chrome."""
     from urllib.parse import urlparse
+    if getattr(a, "login", False) and getattr(a, "use_my_browser", False):
+        raise SystemExit("--login signs in to a fresh, isolated browser; it is refused with --use-my-browser")
     if getattr(a, "use_my_browser", False):
         if getattr(a, "fresh", False):
             raise SystemExit("--fresh would clear this site's cookies in your own browser (logging you out). "
@@ -106,6 +108,11 @@ def cmd_explore(a):
           f"{len(site['menus'])} menus → {a.out}")
 
 
+def _signed_in(a):
+    """With --login, the sessions the recording uses: signed in, isolated, hazards on."""
+    return {"session": a.session} if getattr(a, "session", None) else {}
+
+
 def cmd_run(a, cf=None):
     cf = cf or _cf(a)
     if a.index:
@@ -113,11 +120,12 @@ def cmd_run(a, cf=None):
         from .index import load as load_index
         shots = getattr(a, "shots", None) or []  # only the list this demo just wrote, never one left in the work dir
         if shots:  # the founder's shot list: every screen the script speaks about, then the task if there is one
-            return tour.run(cf, a.url, shots, load_index(a.index), out=a.work, fresh=a.fresh, dry_run=a.dry_run)
+            return tour.run(cf, a.url, shots, load_index(a.index), out=a.work, fresh=a.fresh, dry_run=a.dry_run,
+                            **_signed_in(a))
         if getattr(a, "voice", None):
             print("no shot list: recording the goal only")
         return jev_drive.run(cf, a.url, a.goal, load_index(a.index), out=a.work, fresh=a.fresh,
-                             blur_typed=not a.no_blur, dry_run=a.dry_run)
+                             blur_typed=not a.no_blur, dry_run=a.dry_run, **_signed_in(a))
     from .drive import navigator
     return navigator.run(cf, a.url, a.goal, out=a.work, picker=a.picker, fresh=a.fresh,
                          page_maps=bool(getattr(a, "voice", None)) or getattr(a, "page_maps", False),
@@ -166,7 +174,7 @@ def site_map(a, cf):
         if story.knows_nothing(load_index(str(path))):
             path.unlink(missing_ok=True)
             raise SystemExit(f"stopped: nothing readable on {host} (no menus, no listings, no text: a site drawn on "
-                             "a canvas, like a Flutter app, can't be mapped), so there is nothing true to say about it")
+                             "a canvas without an accessibility layer can't be mapped), so there is nothing true to say about it")
     return str(path)
 
 
@@ -177,6 +185,22 @@ def cmd_demo(a):
     if a.goal != a.prompt:
         print(f"goal: {a.goal}")
     a.index = site_map(a, cf)
+    login = None
+    try:
+        if getattr(a, "login", False):
+            from .login import flow
+            login = flow.with_login(a, cf)
+        return _demo(a, cf)
+    except RuntimeError as err:
+        if str(err).startswith("login:"):
+            raise SystemExit(str(err))
+        raise
+    finally:
+        if login:
+            login.forget()
+
+
+def _demo(a, cf):
     if a.voice:  # the founder's script comes first; the recording is narrated from it
         from .index import load as load_index
         from .narrate import repo, story
@@ -245,6 +269,11 @@ def main(argv=None):
     d.add_argument("prompt", help='e.g. "Reset my password for {{EMAIL}}"; secrets as {{NAME}} + env DEMO_NAME')
     run_args(d)
     d.add_argument("--out", default="demo.mp4")
+    d.add_argument("--login", action="store_true",
+                   help="the product has a login: once the public site is mapped, ask for a demo account and record "
+                        "signed in (nothing you type is kept)")
+    d.add_argument("--login-via", choices=["terminal", "stdin"], default="terminal",
+                   help="where the login question is asked: this terminal, or one JSON line on stdin (a host app)")
     d.add_argument("--work", help="folder for frames (default: <out>.run)")
     d.add_argument("--gif", action="store_true")
     d.add_argument("--voice", help="narrate with this voice: chris, eric, will, sarah or jessica (ElevenLabs, one take; "

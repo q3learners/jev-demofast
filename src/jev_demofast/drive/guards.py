@@ -1,6 +1,6 @@
 """Safety rules every run follows, whichever driver decides the steps."""
 import re
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from ..config import secret
 
@@ -20,6 +20,39 @@ DEMO_FRAMING = re.compile(r"^\s*(?:(?:create|make|record|build|generate)\s+(?:a|
 CHANGES = re.compile(r"\b(save|submit|send|invite|update|confirm|apply|pay|subscribe|purchase|buy|unsubscribe|"
                      r"unwatch|watch|ignore|turn (on|off)|disable|enable|add|create|delete|remove)\b", re.I)
 TOGGLES = {"checkbox", "switch", "radio", "menuitemcheckbox", "menuitemradio"}
+
+
+# A logged-in run may act like a user (add a student, ask the tutor) but never pays, deletes, logs out, changes the
+# account's sign-in details or reaches someone outside the account. Unlike BLOCKED, a brief can't unlock these.
+LOGGED_IN_HAZARDS = re.compile(r"\b(pay|payment|purchase|buy|checkout|check out|subscribe|upgrade|billing|card|"
+                               r"verify you are the parent|delete|remove|destroy|deactivate|unsubscribe|cancel subscription|close account|log ?out|"
+                               r"sign ?out|change (your )?(email|password)|reset (your )?password|invite|share|send to)\b",
+                               re.I)
+# A page asking for card or billing details: moving forward is refused. Whether a step takes money or verifies the
+# parent without showing those fields yet is judged from the screen (money.py), not from any product's wording.
+MONEY_PAGE = re.compile(r"card number|\bcvc\b|\bcvv\b|payment details|billing address", re.I)
+FORWARD = re.compile(r"\b(continue|next|submit|confirm|done|finish|save|verify|start)\b", re.I)
+
+
+EMAIL_ADDRESS = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+
+
+def may_open(label, address):
+    """A logged-in run opens a page by its address only if neither its label nor its path and query is a hazard
+    ("/account/logout", "/account/deleteKid", "?action=destroy"): opening by address never passes Session.act."""
+    u = urlparse(unquote(unquote(address or "")))  # "/account/%64elete", "?next=%252Fbilling"
+    words = re.sub(r"[^a-zA-Z]+", " ", re.sub(r"([a-z])([A-Z])", r"\1 \2", f"{u.path} {u.query} {u.fragment}"))
+    return not hazard(label or "") and not hazard(words)
+
+
+class HazardStop(Exception):
+    """A logged-in run reached a step it never takes (the message is the refused label): the demo stops there."""
+
+
+def hazard(label, context=""):
+    """True if a logged-in run must not take this step: a hazard label, or moving forward on a money page."""
+    return bool(LOGGED_IN_HAZARDS.search(label or "")) or (
+        bool(MONEY_PAGE.search(context or "")) and bool(FORWARD.search(label or "")))
 
 
 class DryRunStop(Exception):

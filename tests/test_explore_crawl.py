@@ -471,3 +471,56 @@ def test_a_normal_site_never_runs_button_discovery(monkeypatch):
     session, _ = fake_session(site_pages())
     m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
     assert "/collections/:handle" in m and m["/pages/about"]["texts"] == ["Our story"]
+
+
+def test_a_logged_in_explore_never_opens_a_hazard_link(monkeypatch):
+    """Security review: the explorer opens links by address, which never passes Session.act's check. In a logged-in
+    run a link whose label or path is a hazard (/account/logout, /kids/3/delete, "Billing") is never queued."""
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    pages = site_pages()
+    risky = [{"label": "My account", "to": "/account/logout"}, {"label": "Tidy up", "to": "/kids/3/delete"},
+             {"label": "Billing", "to": "/billing"}, {"label": "Kids", "to": "/account/deleteKid"},
+             {"label": "Go", "to": "/api/kid?action=destroy"}, {"label": "Emails", "to": "/emails/unsubscribe"},
+             {"label": "Account", "to": "/account/deactivate"}]
+    pages["/"]["links"] = pages["/"]["links"] + risky
+    for link in risky:
+        pages[link["to"]] = {"title": "x", "text": "x", "links": [], "actions": [], "headings": ["x"]}
+    session, visited = fake_session(pages)
+
+    class LoggedIn(session):
+        hazards = True
+    explore("https://shop.test/", cf=None, log=lambda x: None, session=LoggedIn)
+    assert not {"/account/logout", "/kids/3/delete", "/billing", "/account/deleteKid", "/api/kid?action=destroy",
+                "/emails/unsubscribe", "/account/deactivate"} & set(visited)
+    session2, visited2 = fake_session(pages)  # not logged in: today's behaviour (only blocked labels are skipped)
+    explore("https://shop.test/", cf=None, log=lambda x: None, session=session2)
+    assert "/billing" in visited2
+
+
+def test_a_logged_in_explore_never_opens_a_hazard_menu_item(monkeypatch):
+    """Review: menu destinations were queued with no check; an account menu's "Log out" (a GET /logout) would log the
+    explore session out."""
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    pages = site_pages()
+    pages["/logout"] = pages["/profile"] = {"title": "x", "text": "x", "links": [], "actions": [], "headings": ["x"]}
+    monkeypatch.setattr(explore_mod, "discover_menus", lambda s, log: [{"opener": "Venkat", "opens_on": "click", "items": [
+        {"label": "Log out", "to": "/logout"}, {"label": "Profile", "to": "/profile"}]}])
+    session, visited = fake_session(pages)
+
+    class LoggedIn(session):
+        hazards = True
+    explore("https://shop.test/", cf=None, log=lambda x: None, session=LoggedIn)
+    assert "/logout" not in visited and "/profile" in visited
+
+
+def test_a_hazard_popup_doesnt_stop_a_logged_in_explore(monkeypatch):
+    """Review: a pop-up whose only closer is a hazard raised HazardStop out of explore()."""
+    from jev_demofast.drive.guards import HazardStop
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod, "clear_popups", lambda cf, s, log: (_ for _ in ()).throw(HazardStop("Subscribe")))
+    session, _ = fake_session(site_pages())
+    m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
+    assert "/pages/about" in m

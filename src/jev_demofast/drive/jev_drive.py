@@ -14,7 +14,7 @@ from ..index import route_for, summary
 from ..record.recorder import Recorder
 from .check import goal_reached
 from .filters import apply_filters, url_agrees
-from .guards import DryRunStop, blocked, fill_text, on_site, password_secret, stop_if_dry_run
+from .guards import DryRunStop, HazardStop, blocked, fill_text, on_site, password_secret, stop_if_dry_run
 from .menus import LEFT_SITE, describe_menu, menu_options, open_menu
 from .popups import clear_popups, covered, first_screen
 from .showcase import reveal_results, showcase
@@ -28,10 +28,11 @@ part of the goal THIS form serves, and give only the values meant for this form 
 email, not the signed-in user's). Secrets appear as placeholders like {{PASSWORD}}: copy them verbatim."""
 
 
-def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=True, dry_run=False, log=print):
+def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=True, dry_run=False, log=print,
+        session=None):
     t0 = time.perf_counter()
     ms = lambda: round((time.perf_counter() - t0) * 1000)
-    s = Session(url, fresh=fresh)
+    s = (session or Session)(url, fresh=fresh)  # Session at call time: tests swap it for a fake
     rec = Recorder(out, s, blur_typed=blur_typed)
     rec.dry_run = dry_run
     log = rec.tee(log)
@@ -53,6 +54,9 @@ def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=Tr
     except DryRunStop as stop:
         result["would_click"] = str(stop)
         log(f"{ms():>6} ms  DRY RUN: stopped before {str(stop)!r}; nothing was changed")
+    except HazardStop as stop:  # a logged-in run never pays, deletes or logs out: the demo ends before that step
+        result["stopped_at"] = str(stop)
+        log(f"{ms():>6} ms  the next step is {str(stop)!r}; the demo stops here")
     finally:
         rec.save(goal, cf.decisions)
         s.close()
@@ -316,6 +320,8 @@ def click_on_camera(s, rec, e, action):
     `action`. Returns the new page; None if the page changed under the click (nothing kept); LEFT_SITE if the click
     led off the site (nothing kept). A dry run stops before a click that would change data."""
     _stop_if_dry_run(rec, e, s)
+    if hasattr(s, "check"):
+        s.check(e, "click")  # a refused step is never filmed
     rec.snap(1.2, node=e["node"])
     try:
         s.act(e, "click")
