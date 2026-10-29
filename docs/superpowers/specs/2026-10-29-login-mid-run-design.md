@@ -22,6 +22,9 @@ already maps its public pages and marks its sign-in forms.
 - **When there is more than one sign-in form, the founder chooses.** K-12 has a parent/student form ("Welcome back.":
   Email, Password) and a child form ("Sign in to your subjects": Your login ID, Passcode).
 - **First test: a K-12 parent account.**
+- **A logged-in demo does what a real user does** (the founder, 29 October): a parent adds a student and sets up
+  their account; a child browses subjects, has a conversation with the tutor about a concept, and checks their
+  schedule. So the logged-in run may type, save and send in the demo account. Only the hazards below stay blocked.
 
 ## Goals
 
@@ -32,7 +35,9 @@ already maps its public pages and marks its sign-in forms.
 3. **The answer is never kept.** It's held in memory for the run, used to sign in, and never written to a log, the
    map, `actions.json`, `replay.json`, the decisions log, a frame or any file.
 4. **The demo opens already signed in.** Signing in is off camera. The script can say "once you sign in…".
-5. **The logged-in tour stays read-only,** as exploring is today, with the card-check and billing hazards K-12 has.
+5. **The logged-in demo acts like a user, within hard limits.** Exploring stays read-only (it only maps). The
+   recorded demo may type, save, add and send to show a workflow. It never pays, deletes, logs out, changes the
+   account's sign-in details, or sends anything to someone outside the account (see "Safety once signed in").
 
 ## Non-goals
 
@@ -47,8 +52,9 @@ already maps its public pages and marks its sign-in forms.
 ## Anti-goals
 
 - A credential in any file, log line, frame, cache or model prompt.
-- A logged-in run that changes the founder's data: no deleting, paying, inviting, adding, verifying a card, or
-  changing settings.
+- A logged-in run that pays, deletes, or reaches outside the demo account: no payment, card or billing step, no
+  delete or remove, no log out, no change to the account's email or password, and no invite or share sent to an
+  address.
 - A demo that claims to be logged in when sign-in failed. A failed sign-in says so in the log and the run carries on
   logged out, as today.
 
@@ -57,13 +63,32 @@ already maps its public pages and marks its sign-in forms.
 ### Flow (with `--login`)
 
 1. **Map the public site** as today. The map marks sign-in forms (`sign_in: true`).
-2. **Pick the forms to offer:**
-   - each page marked `sign_in` whose form is a sign-**in**, not a sign-**up**;
-   - one entry per distinct form, keyed by its first heading and its field labels. K-12's `?mode=signin` and
-     `?as=student&mode=signin` are the same form, so they're offered once;
-   - a sign-up form is one whose page text or buttons match `guards.BLOCKED` ("create account", "sign up") or that
-     was reached through a button matching it ("I need an account"). On K-12 that drops the "Your account, current
-     step" pages.
+2. **Pick the forms to offer.** The cached public map is reused, but its sign-in pages are reopened live: the map
+   doesn't hold password fields (the snapshot skips them) or a submit button that's disabled while the form is
+   empty. Then:
+   - **Sign-in, not sign-up, is Clef's call** from the screenshot, `cf.yes` as in `explore/buttons.py`, kept only at
+     ≥ `SIGNS_IN_CONFIDENT = 0.8`. The question:
+     > Is this a form for signing in to an account that already exists (not for creating a new account, and not a
+     > later step of making one)?
+
+     with `true` = "yes: it signs in to an existing account", `false` = "no: it creates an account or is a step of
+     making one", and the state `{url, fields, buttons, visible_text}`. **Measured on K-12 (29 October, 3 runs each,
+     the same score every run):**
+
+     | Page | Truth | Score |
+     |---|---|---|
+     | `/setup/account?mode=signin` | sign-in | 0.95 |
+     | `/setup/account?as=student&mode=signin` | sign-in | 0.97 |
+     | `/setup/kid` | sign-in | 0.90 |
+     | `/setup/account` | sign-up | 0.01 |
+     | `/setup/account?mode=new` | sign-up | 0.01 |
+     | `/setup/account?as=student` | sign-up | 0.01 |
+
+     No check model that reads images means no form is offered (`login: can't tell sign-in forms apart without the
+     check model`), and the run continues logged out.
+   - **One entry per distinct form,** keyed by its title and its field labels. The title is the form page's first
+     text line that isn't on every sign-in page: "TutorQ K-12" heads every K-12 page, so the title is "Welcome
+     back.". K-12's parent and student "Welcome back." forms have the same title and fields, so they're offered once.
    - If no form is left, log `login: no sign-in form found` and continue logged out.
 3. **Ask** (the question channel), with the forms. The founder picks one and fills its fields, or skips.
 4. **Sign in** in the explore session:
@@ -77,10 +102,12 @@ already maps its public pages and marks its sign-in forms.
    then give up and continue logged out.
    - **If a code is asked for next** (a page with one short field and words such as "code" / "verify"), ask a
      second question for the code. The code expires on the site's own timer.
-6. **Map again, logged in,** from where sign-in landed. This uses the same explorer, which stays read-only, with the
-   hazards below.
-7. **Script and record as today.** The recording session is a different browser context, so before the recorder
-   takes its first frame it signs in again with the same answer, off camera.
+6. **Map again, logged in,** from where sign-in landed. This uses the same explorer, which stays read-only (it only
+   maps), with the hazards below.
+7. **Script and record from the logged-in map only.** The video opens signed in, so public pages aren't shots. The
+   founder's script and the shot list get the logged-in map. The recording runs in a **new isolated browser
+   context**, not the persistent profile, so the session cookie is thrown away with it. It signs in there, off
+   camera, before the recorder takes its first frame. `--login` can't be combined with `--use-my-browser`.
 8. **End of run:** the answer is dropped (the variable is cleared and nothing else holds it).
 
 ### The question channel
@@ -117,15 +144,34 @@ passcode, …).
 
 ### Safety once signed in
 
-- **Never clicked, explore or tour:** everything `guards.blocked` already covers (delete, remove, log out, sign up…)
-  and everything `guards.CHANGES` covers, plus **verify, card, billing, payment, checkout, upgrade, plan** (K-12's
-  `/setup/verify` card check and `/billing`). The list is added to `guards.py` and applies to discovery and to the
-  tour's clicks.
-- **Never typed into:** any field after sign-in. The logged-in explorer reads, as the explorer always does.
-- **Off-site:** a click that leads to another host (K-12's Stripe) records nothing, as discovery already does.
-- **Log out stays blocked:** a tour that logged out would end on the sign-in page.
+- **Exploring (mapping) stays read-only,** logged in or not: discovery never clicks `guards.blocked` or
+  `guards.CHANGES` labels, never types, and asks Clef on pages with fields, as today.
+- **The recorded demo may act like a user:** type into fields, choose options, and click save, add, create, send,
+  submit, continue and next, as the brief's task needs ("add a student and set up their account", "ask the tutor
+  about fractions").
+- **Never clicked by anything, in a `--login` run** (a new `guards.LOGGED_IN_HAZARDS`, checked with the label and
+  the page's visible text around it):
+  - money: pay, payment, purchase, buy, checkout, subscribe, upgrade, billing, card, "verify you are the parent";
+  - loss: delete, remove, cancel subscription, close account;
+  - leaving: log out, sign out;
+  - the account itself: change email, change password, reset password;
+  - reaching outside: invite, share, "send to", and any field asking for an email address other than the demo
+    account's own.
 
-### Caching
+  The same "unless the brief names it" rule as `guards.blocked` does **not** apply here: a brief can't unlock these.
+- **Off-site:** a click that leads to another host (K-12's Stripe) ends that step, as discovery already does.
+- **If a workflow needs a blocked step,** the demo stops there and says so ("the next step is a payment; the demo
+  stops here"). For example, if adding a K-12 student needs a card or a price confirmation, the video shows
+  everything up to that step.
+
+### What the founder should know
+
+- **Each logged-in run adds data to the demo account** (another student, another conversation). Cleaning it up is
+  the founder's job. Use an account made for demos.
+- **The video shows what the account shows:** names, the email on the dashboard. Text read from logged-in pages also
+  goes to the script model, as page text always does. What's never kept is what the founder *typed* to sign in.
+
+## Caching
 
 The explorer caches maps per site (`~/.cache/jev-demofast/maps/<host>.json`), and the hosted container shares that
 cache across users. **A logged-in map is never written to the shared cache:** it holds the founder's own data (their
@@ -145,8 +191,10 @@ process's stdin. This design only fixes the protocol the app must speak.
     parent demo account.
   - The run maps logged-in pages and records the demo signed in, `verified: True`.
   - The video's first frame is already signed in.
-- **Nothing kept:** after the run, `grep -r <the demo password>` over the work folder, the map cache and the log finds
-  nothing. A test does the same with a fake run.
+- **Nothing kept:** after the run, `grep -r` for the demo password, and for the email as typed into the form, over
+  the work folder, the map cache and the log finds the password nowhere. The email appears only where the
+  dashboard itself shows it. A test does the same with a fake run. The persistent Chrome profile has no K-12
+  session afterwards.
 - **Wrong password:** one retry prompt, then "login: couldn't sign in; continuing logged out", and the demo is made
   as today.
 - **Skip:** the same as running without `--login`.
@@ -155,7 +203,9 @@ process's stdin. This design only fixes the protocol the app must speak.
   - the question JSON's shape;
   - the stdin channel: answer, skip, timeout and garbage, where garbage counts as skip;
   - sign-in success, wrong password then retry, and the code step;
-  - the new hazard words are never clicked;
+  - the logged-in hazards are never clicked, even when the brief names them;
+  - a demo step that needs a blocked step stops there and says so;
+  - the recording uses an isolated context with `--login`, and `--login --use-my-browser` is refused;
   - a logged-in map isn't cached;
   - no credential in any written file.
 
