@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from ..drive.guards import HazardStop, on_site
 from ..drive.session import StalePage
-from . import forms
+from . import forms, jobs
 from .model import add_action, add_screen, empty, merge
 from .rules import may_press, outcome
 from .screens import nav_labels, read_screen, sections
@@ -225,7 +225,7 @@ def crawl(new_session, cf, origin, saved=None, budget=None, log=print, now=None)
         if w.m["account"]["state"].startswith("partway"):  # a setup step: walked up to its finishing click only
             add_screen(w.m, first_key, {**first, "kind": "wizard-step", "section": "Setup"}, w.now)
             forms.handle(w.s, cf, w.m, first_key, first, w.m["account"]["state"], w.budget, log, w.now, "Setup")
-            return merge(saved, w.m, {"Setup"}, w.now)
+            return _with_jobs(cf, merge(saved, w.m, {"Setup"}, w.now), log)
         w.nav = _find_sections(w, first_key)
         w.m["account"]["sections"] = list(w.nav)
         seen = set()
@@ -243,4 +243,9 @@ def crawl(new_session, cf, origin, saved=None, budget=None, log=print, now=None)
             log(f"blueprint: {section} walked")
     finally:
         w.s.close()
-    return merge(saved, w.m, seen, w.now)
+    return _with_jobs(cf, merge(saved, w.m, seen, w.now), log)
+
+
+def _with_jobs(cf, m, log):
+    m["jobs"] = jobs.find(cf, m, log)
+    return m
