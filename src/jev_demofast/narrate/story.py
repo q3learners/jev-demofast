@@ -77,7 +77,16 @@ def context(index):
                       for m in site.get("menus", [])],
             "listings": listings,
             "pages": dict(list(shots_mod.offerable(index).items())[:PAGES]),
-            "behind_login": site.get("behind_login", [])[:BEHIND_LOGIN]}
+            "behind_login": site.get("behind_login", [])[:BEHIND_LOGIN],
+            **_blueprint(index.get("_behaviour"))}
+
+
+def _blueprint(b):
+    """A logged-in map's blueprint: the app's sections and the jobs mapping proved (a partial job isn't offered)."""
+    if not b:
+        return {}
+    return {"sections": b["account"].get("sections", []),
+            "jobs": [{"job": j["name"], "ends_with": j["result"]} for j in b.get("jobs", []) if j.get("proven")][:10]}
 
 
 def knows_nothing(index):

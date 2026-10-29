@@ -1,7 +1,6 @@
 """After mapping: the blueprint in a few readable lines, whether this account can show the demo asked for, and when
 it can't, asking the founder how to go on. A demo the account can't support is caught before recording, not on camera."""
 from ..drive.check import CONFIDENT
-from ..login.ask import choice_question
 
 CHOICES = [("record", "Record what this account can show"), ("account", "Use a different account"), ("stop", "Stop")]
 NEEDS_Q = "Which of these tasks does the demo need to show? 'none' if none of them."
@@ -37,6 +36,7 @@ def fits(cf, sentence, m):
 
 def ask_how(ask, needed, state):
     """"record", "account" or "stop"; no answer stops."""
+    from ..login.ask import choice_question  # login.flow imports this module
     why = (f"This demo needs an account that is {needed}; this one is {state}. How should the demo go on?")
     answer = ask(choice_question(why, CHOICES, qid="q4"))
     return answer["choice"] if answer else "stop"

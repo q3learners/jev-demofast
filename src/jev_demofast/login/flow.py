@@ -1,6 +1,10 @@
 """--login: once the public site is mapped, ask for a demo account, sign in off camera, map the logged-in app, and
 record it signed in. The answer lives only in a Login object for the run; every session it makes is a new isolated
 browser context (the persistent profile never holds the founder's session) with the logged-in hazards on."""
+from ..behaviour.crawl import crawl as blueprint
+from ..behaviour.fit import ask_how, fits, summary
+from ..behaviour.model import legacy_routes
+from ..behaviour.store import load_map, save_map
 from ..drive.money import judge
 from ..drive.session import Session, origin
 from .ask import asker, question
@@ -8,7 +12,7 @@ from .forms import sign_in_forms
 from .sign_in import sign_in
 
 WHY = "Part of this site is behind a login. Which sign-in should the demo use?"
-LOGGED_IN_MAP = "site-map-logged-in.json"  # in the run's work folder only: it holds the account's own data
+LOGGED_IN_MAP = "site-map-logged-in.json"  # the run's copy; the blueprint is also kept in the store (local runs)
 
 
 class Login:
@@ -59,6 +63,14 @@ class Login:
         s.hazards, s.own_email, s.money_step = True, self._own_email, self._money_step
         return s
 
+    @property
+    def account_id(self):
+        """Who the blueprint belongs to: the account's email, else its first non-secret value (a kid's login ID)."""
+        if self._own_email:
+            return self._own_email
+        return next((self._values[f["name"]] for f in self._form["fields"] if not f["secret"]), "") \
+            if self._values else ""
+
     def forget(self):
         self._values = self._own_email = self._ask = None
 
@@ -68,19 +80,38 @@ def prepare(cf, a, index, log):
     return Login.prepare(cf, a.url, load_index(index), asker(a.login_via), log=log)
 
 
-def explore(url, out, cf, session):
-    from ..explore import explore as explore_site
-    return explore_site(url, out=out, cf=cf, session=session)
-
-
 def with_login(a, cf, log=print):
-    """Sign in and map the logged-in app; point the run at that map and those sessions. The Login, or None."""
+    """Sign in and map the signed-in app's behaviour (its blueprint, learning from the saved one); point the run at
+    that map and those sessions. Asks the founder how to go on when the account can't show the demo. The Login, or
+    None."""
+    import json
     import os
+    from datetime import datetime, timezone
+    from urllib.parse import urlparse
     login = prepare(cf, a, a.index, log)
     if login is None:
         return None
+    site, host = origin(a.url), urlparse(a.url).hostname
+    stored = a.login_via != "stdin"  # a host app gets per-user storage of its own (its own spec)
+    saved = load_map(host, login.account_id) if stored and not getattr(a, "fresh_map", False) else None
+    m = blueprint(login.session, cf, site, saved=saved, log=log)
+    if stored:
+        save_map(m, host, login.account_id)
     os.makedirs(a.work, exist_ok=True)
     out = os.path.join(a.work, LOGGED_IN_MAP)
-    explore(a.url, out=out, cf=cf, session=login.session)
+    with open(out, "w") as f:
+        json.dump({**legacy_routes(m, site), "_behaviour": m, "_site": {
+            "start": a.url, "explored_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "menus": [],
+            "popups": [], "blocked": None, "behind_login": []}}, f, indent=1)
+    log(summary(m))
+    ok, needed = fits(cf, a.prompt, m)
+    if not ok:
+        how = ask_how(asker(a.login_via), needed, m["account"]["state"])
+        if how == "stop":
+            login.forget()
+            raise RuntimeError("login: the demo account can't show this; stopped as asked")
+        if how == "account":
+            login.forget()
+            return with_login(a, cf, log)
     a.index, a.session = out, login.session
     return login

@@ -62,15 +62,63 @@ def test_without_login_nothing_changes(monkeypatch, tmp_path):
     assert ran[0].index == str(tmp_path / "public.json") and getattr(ran[0], "session", None) is None
 
 
-def test_the_logged_in_map_is_not_cached(monkeypatch, tmp_path):
-    ran, sessions = [], Sessions()
+def a_blueprint(state="set up", jobs=()):
+    from jev_demofast.behaviour.model import add_screen, empty
+    m = empty()
+    m["account"] = {"state": state, "sections": ["Kids"]}
+    add_screen(m, "/kids", {"kind": "tab", "title": "Kids", "url": ORIGIN + "/kids", "texts": ["Your kids"],
+                            "fields": [], "controls": ["Add a kid"], "section": "Kids"}, "t1")
+    m["jobs"] = list(jobs)
+    return m
+
+
+def logged_in(monkeypatch, tmp_path, ran, sessions, blueprint=None, **k):
+    from jev_demofast.behaviour import store
     common(monkeypatch, tmp_path, ran)
+    monkeypatch.setattr(store, "MAPS", tmp_path / "maps")
     monkeypatch.setattr(flow_mod, "prepare", lambda cf, a, index, log: prepared(sessions))
-    monkeypatch.setattr(flow_mod, "explore", lambda url, out, cf, session: open(out, "w").write("{}") and {})
-    cli.cmd_demo(args(tmp_path, login=True))
+    monkeypatch.setattr(flow_mod, "blueprint", lambda new_session, cf, origin, saved=None, log=print:
+                        blueprint or a_blueprint())
+    cli.cmd_demo(args(tmp_path, login=True, **k))
+
+
+def test_the_logged_in_map_is_stored_keyed_and_never_under_stdin(monkeypatch, tmp_path):
+    ran, sessions = [], Sessions()
+    logged_in(monkeypatch, tmp_path, ran, sessions)
     work = tmp_path / "demo.run"
     assert ran[0].index == str(work / "site-map-logged-in.json") and os.path.exists(ran[0].index)
-    assert not (tmp_path / "maps").exists()
+    stored = list((tmp_path / "maps").glob("*.behaviour.json"))
+    assert len(stored) == 1 and GOOD["email"] not in stored[0].name
+    for f in stored:
+        f.unlink()
+    logged_in(monkeypatch, tmp_path, [], sessions, login_via="stdin")
+    assert not list((tmp_path / "maps").glob("*.behaviour.json"))
+
+
+def test_the_run_map_holds_both_views(monkeypatch, tmp_path):
+    import json
+    ran, sessions = [], Sessions()
+    logged_in(monkeypatch, tmp_path, ran, sessions)
+    found = json.load(open(ran[0].index))
+    assert found["/kids"]["buttons"] == [{"label": "Add a kid", "submit": False}]
+    assert found["_behaviour"]["account"]["state"] == "set up" and "_site" in found
+
+
+def test_a_partway_account_asks_and_stop_stops(monkeypatch, tmp_path):
+    job = {"name": "Add a kid", "steps": [], "result": "Maya added", "repeatable": True, "needs": "set up",
+           "proven": True}
+    monkeypatch.setattr(flow_mod, "fits", lambda cf, sentence, m: (False, "set up"))
+    monkeypatch.setattr(flow_mod, "ask_how", lambda ask, needed, state: "stop")
+    with pytest.raises(SystemExit, match="can't show this"):
+        logged_in(monkeypatch, tmp_path, [], Sessions(), blueprint=a_blueprint("partway: Your kids", [job]))
+
+
+def test_record_anyway_carries_on(monkeypatch, tmp_path):
+    ran = []
+    monkeypatch.setattr(flow_mod, "fits", lambda cf, sentence, m: (False, "set up"))
+    monkeypatch.setattr(flow_mod, "ask_how", lambda ask, needed, state: "record")
+    logged_in(monkeypatch, tmp_path, ran, Sessions(), blueprint=a_blueprint("partway: Your kids"))
+    assert ran and ran[0].index.endswith("site-map-logged-in.json")
 
 
 def test_recording_uses_a_signed_in_isolated_session():
@@ -102,11 +150,15 @@ def test_no_credential_in_any_written_file_or_log(monkeypatch, tmp_path, capsys)
     said = []
     monkeypatch.setattr(flow_mod, "prepare", lambda cf, a, index, log: prepared(sessions, log=said.append))
 
-    def explore(url, out, cf, session):
-        s = session(url)
-        open(out, "w").write(repr(s.observe()))  # everything the explorer could have read
-        return {}
-    monkeypatch.setattr(flow_mod, "explore", explore)
+    from jev_demofast.behaviour import store
+    monkeypatch.setattr(store, "MAPS", tmp_path / "maps")
+
+    def blueprint(new_session, cf, origin, saved=None, log=print):
+        s = new_session(origin + "/")
+        m = a_blueprint()
+        m["screens"]["/kids"]["texts"].append(repr(s.observe()))  # everything the walk could have read
+        return m
+    monkeypatch.setattr(flow_mod, "blueprint", blueprint)
     cli.cmd_demo(args(tmp_path, login=True))
     # and a sign-in that fails loudly, with the password in its exception
     monkeypatch.setattr(flow_mod, "sign_in", lambda *a, **k: (_ for _ in ()).throw(ValueError(f"boom {PASSWORD}")))
