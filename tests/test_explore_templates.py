@@ -21,3 +21,16 @@ def test_siblings_on_one_prefix_group_and_a_lone_deep_page_keeps_its_path():
 def test_two_examples_per_route_in_discovery_order():
     paths = ["/collections/mens", "/pages/about", "/collections/womens", "/collections/sale"]
     assert pick_examples(paths, templates(paths)) == ["/collections/mens", "/pages/about", "/collections/womens"]
+
+
+def test_kept_paths_are_their_own_routes_query_included():
+    """Pages found through buttons (a Flutter app): grouped, the account step's password field marked every K-12 page
+    as a sign-in page, and ?mode=signin and ?mode=signup are different screens."""
+    paths = ["/setup/who", "/setup/account?mode=signin", "/setup/account?mode=signup", "/setup/student"]
+    r = templates(paths, keep=frozenset(paths))
+    assert r == {p: p for p in paths}
+
+
+def test_other_paths_still_group_beside_kept_ones():
+    r = templates(["/collections/mens", "/collections/womens", "/setup/who"], keep=frozenset({"/setup/who"}))
+    assert r["/collections/mens"] == "/collections/:handle" and r["/setup/who"] == "/setup/who"
