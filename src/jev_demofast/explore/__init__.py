@@ -14,6 +14,7 @@ from ..drive.guards import blocked, on_site
 from ..drive.popups import bot_check, clear_popups
 from ..drive.session import Session, StalePage
 from . import menus
+from .buttons import SIGN_IN_FORM_JS, discover
 from .listing import read_listing
 from .menus import VISIBLE_LINKS_JS, discover_menus
 from .templates import pick_examples, templates
@@ -29,9 +30,6 @@ HEADINGS_JS = r"""[...document.querySelectorAll('h1,h2,h3')].filter(h => {
 # <div id="root">, and the map was empty. Each page is read once it shows text, or after CONTENT_WAIT_S without.
 HAS_CONTENT_JS = "!!document.body && document.body.innerText.trim().length > 0"
 CONTENT_WAIT_S, CONTENT_POLL_S = 10, 0.25
-# A page behind a login sends a visitor to a sign-in form instead. Mapped, it carried the sign-in page's content, and
-# reafi.ai's demo went to its login page and back. A redirect alone isn't a wall (/about-us → /pages/about).
-SIGN_IN_FORM_JS = "!!document.querySelector('input[type=password]')"
 EXAMPLES_PER_ROUTE = 2
 LINKS_PER_ROUTE = 80  # as the source-code map caps them
 # Marketing pop-ups open on a timer (Allbirds' a few seconds in); exploring is ahead of time, so the first page gets
