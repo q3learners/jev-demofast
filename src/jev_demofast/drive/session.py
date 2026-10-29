@@ -133,8 +133,8 @@ class Session:
             raise HazardStop(element.get("label", "")[:60])
 
     def act(self, element, kind, text=None):
-        self.check(element, kind, text)
         element = self.refind(element)
+        self.check(element, kind, text)  # on the element and page as they are now, not as they were decided on
         self.arm()
         self.browser.act(element["actions"][kind], self.page, text=text)
 

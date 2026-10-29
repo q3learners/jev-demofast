@@ -119,3 +119,12 @@ def test_the_tour_stops_and_says_why(monkeypatch):
                       log=said.append, session=S, recorder=R)
     assert result["stopped_at"] == "Delete homework" and result["verified"] is False
     assert any("the demo stops here" in line for line in said)
+
+
+def test_the_check_uses_the_refreshed_element_and_page():
+    """Security review: the page can change between the decision and the click (a "Next" that became "Pay now")."""
+    s = session()
+    s.refind = lambda e: {**e, "label": "Pay now"}
+    with pytest.raises(HazardStop):
+        s.act({**SAVE, "label": "Next"}, "click")
+    assert s.browser.acted == []
