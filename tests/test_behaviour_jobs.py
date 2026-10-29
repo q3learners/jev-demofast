@@ -54,3 +54,42 @@ def test_a_job_through_a_gone_screen_is_not_proven():
     login = next(k for k in m["screens"] if k.startswith("/kids/setup/login"))
     m["screens"][login]["gone"] = True
     assert not next(j for j in jobs.find(Named(names=["Add a kid"]), m) if j["name"] == "Add a kid")["proven"]
+
+
+def again(app, saved, cf=None):
+    app.pressed.clear()
+    return crawl_mod.crawl(app.restart, cf or Named(names=["Add a kid"]), "https://k12.test", saved=saved,
+                           log=lambda m: None, now="t2")
+
+
+def test_an_unchanged_map_is_not_walked_again():
+    app = FakeApp()
+    m = again(app, walk(app, Named(names=["Add a kid"])))
+    assert set(app.pressed) <= set(app.tabs)
+    assert m["screens"]["/kids/ava"]["last_seen"] == "t2"
+
+
+def test_a_new_section_is_walked():
+    app = FakeApp()
+    saved = walk(app, Named(names=["Add a kid"]))
+    app.tabs.append("Schedule")
+    m = again(app, saved)
+    assert "Schedule" in m["account"]["sections"] and "/schedule" in m["screens"] and "Add a kid" not in app.pressed
+
+
+def test_a_changed_account_state_walks_everything():
+    app = FakeApp()
+    saved = walk(app, Named(names=["Add a kid"]))
+    saved["account"]["state"] = "partway: Your kids"
+    again(app, saved)
+    assert "Add a kid" in app.pressed
+
+
+def test_jobs_survive_a_learning_run():
+    """A job's steps are indexes into the actions: a merge must keep them pointing at the same actions."""
+    app = FakeApp()
+    saved = walk(app, Named(names=["Add a kid"]))
+    app.tabs.append("Schedule")
+    m = again(app, saved)
+    job = next(j for j in m["jobs"] if j["name"] == "Add a kid")
+    assert job["proven"] and controls(m, job)[:4] == ["Add a kid", "First name", "Age", "Continue"]

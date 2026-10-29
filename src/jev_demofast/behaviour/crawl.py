@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from ..drive.guards import HazardStop, on_site
 from ..drive.session import StalePage
 from . import forms, jobs
-from .model import add_action, add_screen, empty, merge
+from .model import add_action, add_screen, empty, merge, typed_by_mapping
 from .rules import may_press, outcome
 from .screens import nav_labels, read_screen, sections
 
@@ -237,13 +237,32 @@ def crawl(new_session, cf, origin, saved=None, budget=None, log=print, now=None)
                 w.m["left"].append(f"{section}: couldn't open it")
                 continue
             key, screen = read_screen(w.s)
-            add_screen(w.m, key, {**screen, "kind": "tab", "section": section}, w.now)
             seen.add(section)
+            if _unchanged(w, saved, section, key, screen):
+                continue
+            add_screen(w.m, key, {**screen, "kind": "tab", "section": section}, w.now)
             _walk_section(w, section, key)
             log(f"blueprint: {section} walked")
     finally:
         w.s.close()
     return _with_jobs(cf, merge(saved, w.m, seen, w.now), log)
+
+
+def _unchanged(w, saved, section, key, screen):
+    """A saved section whose tab shows what it showed before (leaving out the navigation and what mapping itself
+    added) isn't walked again: its screens are kept, seen now. A different account state walks everything."""
+    if not saved or saved["account"].get("state") != w.m["account"]["state"]:
+        return False
+    old = saved["screens"].get(key)
+    ignore = set(w.nav) | typed_by_mapping(saved)
+    if not old or old.get("gone") or {c for c in old.get("controls", []) if c not in ignore} != \
+            {c for c in screen["controls"] if c not in ignore}:
+        return False
+    for k, s in saved["screens"].items():
+        if s.get("section") == section:
+            w.m["screens"][k] = s if s.get("gone") else {**s, "last_seen": w.now}
+    w.log(f"blueprint: {section} unchanged since {old.get('last_seen')}")
+    return True
 
 
 def _with_jobs(cf, m, log):

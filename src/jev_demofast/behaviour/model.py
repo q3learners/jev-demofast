@@ -48,11 +48,17 @@ def merge(saved, fresh, seen_sections, now):
             m["screens"][key] = {**screen, "gone": True}
     m["screens"].update(fresh["screens"])
     m["actions"] = [dict(a) for a in saved["actions"]]
-    for a in fresh["actions"]:
-        add_action(m, a["screen"], a["control"], a["did"], a["outcome"], a["tried_at"], a.get("values"))
-    m["chains"] = fresh.get("chains") or saved.get("chains", [])
+    moved = [add_action(m, a["screen"], a["control"], a["did"], a["outcome"], a["tried_at"], a.get("values"))
+             for a in fresh["actions"]]  # a fresh action's index in the merged list
+    chains = [list(c) for c in saved.get("chains", [])] + [[moved[i] for i in c] for c in fresh.get("chains", [])]
+    m["chains"] = [c for n, c in enumerate(chains) if c not in chains[:n]]
     m["jobs"] = fresh["jobs"] or saved["jobs"]
     return m
+
+
+def typed_by_mapping(m):
+    """Every value mapping typed: what it added (a kid called Maya) isn't a change in the product."""
+    return {v for a in m.get("actions", []) for v in (a.get("values") or {}).values()}
 
 
 def legacy_routes(m, origin):
