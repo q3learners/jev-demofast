@@ -70,6 +70,9 @@ def fake_session(pages, home_title=None):
         def observe(self):
             visited.append(self.path)
             p = self._p()
+            if p.get("unreadable"):  # an image or other file, not a page: there's no document to read
+                from jev_demofast.browser.cdp import StalePage
+                raise StalePage("Document is navigating")
             self.page = {"url": "https://shop.test" + self.path, "title": home_title if self.path == "/" and home_title
                          else p["title"], "text": p["text"], "actions": p["actions"], "h": 780}
             return self.page
@@ -316,3 +319,19 @@ def test_a_sign_in_page_is_mapped_and_marked(monkeypatch):
     session, _ = fake_session(walled_site())
     m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
     assert m["/login"]["sign_in"] is True and m["/pages/about"]["sign_in"] is False
+
+
+def test_a_link_to_a_file_that_isnt_a_page_is_skipped_and_the_rest_is_mapped(monkeypatch):
+    """selvage.run linked a diagram, /visuals/selvage-architecture.svg: opened as a page there was no document to read,
+    and the whole map stopped. Like a page that never loads, it costs that link, not the map."""
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    pages = site_pages()
+    pages["/"]["links"].insert(0, {"label": "Architecture diagram", "to": "/visuals/architecture.svg"})
+    pages["/visuals/architecture.svg"] = {"title": "", "text": "", "links": [], "actions": [], "headings": [],
+                                          "unreadable": True}
+    session, _ = fake_session(pages)
+    said = []
+    m = explore("https://shop.test/", cf=None, log=said.append, session=session)
+    assert "/visuals/architecture.svg" not in m and "/pages/about" in m and "/collections/:handle" in m
+    assert any("skipped /visuals/architecture.svg" in line for line in said)

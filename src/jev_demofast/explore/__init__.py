@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 from ..drive.guards import blocked, on_site
 from ..drive.popups import bot_check, clear_popups
-from ..drive.session import Session
+from ..drive.session import Session, StalePage
 from . import menus
 from .listing import read_listing
 from .menus import VISIBLE_LINKS_JS, discover_menus
@@ -134,20 +134,20 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
             queue.remove(path)
             try:
                 s.browser.call("Page.navigate", url=origin + path)
-            except TimeoutError as e:  # one page that won't load costs that page, not the map
-                log(f"  skipped {path}: {e}")
-                visited.append(path)
-                continue
-            s.wait_loaded()
-            _wait_for_content(s)  # a sign-in redirect made in the page's script lands after the load
-            if _sent_to_sign_in(s, origin + path):
-                site["behind_login"].append(path)
-                visited.append(path)
-                continue
-            if not on_site(s.page["url"], urlparse(url).hostname) or bot_check(s.page):
-                visited.append(path)
-                continue
-            pages[path] = visit(path)
+                s.wait_loaded()
+                _wait_for_content(s)  # a sign-in redirect made in the page's script lands after the load
+                if _sent_to_sign_in(s, origin + path):
+                    site["behind_login"].append(path)
+                    visited.append(path)
+                    continue
+                if not on_site(s.page["url"], urlparse(url).hostname) or bot_check(s.page):
+                    visited.append(path)
+                    continue
+                pages[path] = visit(path)
+            except (TimeoutError, StalePage) as e:  # one page that won't load, or a file that isn't a page (selvage.run
+                log(f"  skipped {path}: {e}")       # linked an .svg), costs that link, not the map
+                if path not in visited:
+                    visited.append(path)
         routes = templates(list(pages))
         for path, page in pages.items():
             entries[routes[path]] = _merge(entries.get(routes[path]), page, path, origin + path)
