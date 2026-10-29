@@ -34,6 +34,17 @@ def test_moving_forward_on_a_money_page_is_refused():
     assert not hazard("Back", context="Verify you are the parent. Card number")
 
 
+def test_a_step_list_naming_the_card_check_is_not_a_money_page():
+    """Live K-12 run, 29 October: the "Your kids" step's sidebar lists "Verify you are the parent, next", which stopped
+    the demo before adding Maya. The card check's own button ("Verify with a card") is refused by its label."""
+    kids_step = ("TutorQ K-12 Your account, done Confirm your email, done Your kids, current step "
+                 "Verify you are the parent, next Each kid gets their own login, their own tutor and their own "
+                 "subjects. Who are we setting up? First name Age Add Continue")
+    assert not hazard("Continue", context=kids_step)
+    assert not hazard("Add", context=kids_step)
+    assert hazard("Verify with a card")
+
+
 class FakeBrowser:
     def __init__(self, text=""):
         self.text, self.acted = text, []

@@ -28,8 +28,9 @@ LOGGED_IN_HAZARDS = re.compile(r"\b(pay|payment|purchase|buy|checkout|check out|
                                r"verify you are the parent|delete|remove|destroy|deactivate|unsubscribe|cancel subscription|close account|log ?out|"
                                r"sign ?out|change (your )?(email|password)|reset (your )?password|invite|share|send to)\b",
                                re.I)
-# A page about money (K-12's card check is a "Continue" under "Verify you are the parent"): moving forward is refused.
-MONEY_PAGE = re.compile(r"card number|\bcvc\b|\bcvv\b|payment details|verify you are the parent|billing address", re.I)
+# A page asking for money details (a card form under a plain "Continue"): moving forward is refused. Only the fields
+# count, not a step's name: K-12's step list says "Verify you are the parent, next" on the page where kids are added.
+MONEY_PAGE = re.compile(r"card number|\bcvc\b|\bcvv\b|payment details|billing address", re.I)
 FORWARD = re.compile(r"\b(continue|next|submit|confirm|done|finish|save|verify|start)\b", re.I)
 
 
