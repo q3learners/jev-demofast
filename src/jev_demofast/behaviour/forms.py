@@ -11,7 +11,7 @@ from ..drive.guards import HazardStop
 from ..drive.session import StalePage
 from .model import add_action, add_screen
 from .rules import may_press, outcome
-from .screens import read_screen
+from .screens import in_dialog, read_screen
 
 MAKE_VALUES = """You are mapping a web app with a demo account. Make up believable values for the form's fields, the way
 a person trying the product would (a child's first name, an age, a short title). Never reuse a name in "names_used".
@@ -65,7 +65,7 @@ def _escape(s):
 def _dialog(s, cf, m, key, now, chain, from_our_form):
     """The dialog's button to press, or None (closed, nothing pressed). A change label ("Save changes") is allowed
     only when the dialog came from a form this walk filled."""
-    buttons = [e for e in s.elements() if "click" in e["actions"]]
+    buttons = [e for e in in_dialog(s, s.elements()) if "click" in e["actions"]]
     allowed = [e for e in buttons if may_press(e, filled_here=from_our_form)]
     pick = None
     if allowed:

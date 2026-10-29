@@ -87,7 +87,7 @@ def _press_label(w, label):
 
 def _left_the_app(w):
     """The host the session is on now, when it isn't the app's; else None."""
-    url = w.s.page.get("url") or ""
+    url = w.s.observe().get("url") or ""  # the page as it is now, not as it was before the click
     return None if on_site(url, w.host) else (urlparse(url).hostname or url)
 
 

@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- The fake K-12-shaped app as one page, for the behaviour map's live check in a real browser (no login, no
+     network): tabs, a kids list with Add/Delete, an add form whose Continue asks "Add <name> first?" in a real
+     role=dialog, a three-step wizard, 40 subjects, a settings switch, a link off the app, and a card form. -->
+<html><head><meta charset="utf-8"><title>Fake K-12</title>
+<style>body{font-family:sans-serif;margin:24px}nav button{margin-right:8px}.dlg{position:fixed;inset:30% 30%;
+background:#fff;border:1px solid #888;padding:24px}</style></head>
+<body><nav id="nav"></nav><main id="main"></main><div id="dlg"></div>
+<script>
+const S = {kids: ["Ava", "Leo"], form: {}, newKid: null, dialog: null};
+const TABS = ["Home", "Kids", "Subjects", "Settings"];
+const go = r => { S.dialog = null; location.hash = "#/" + r; };
+const h = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k, v]) => k.startsWith("on") ? e[k] = v : e.setAttribute(k, v));
+  kids.forEach(k => e.append(k)); return e; };
+const btn = (label, on, attrs = {}) => h("button", {onclick: on, ...attrs}, label);
+const field = (label) => h("label", {}, label + " ", h("input", {"aria-label": label,
+  oninput: e => S.form[label] = e.target.value}));
+function add() { const n = S.form["First name"]; if (!n) return; S.kids.push(n); S.newKid = n; S.form = {};
+  go("kids/setup/login"); }
+function screen(r) {
+  if (r === "home") return [h("h1", {}, "Welcome back"), h("p", {}, "Your family at a glance"),
+    btn("Upgrade", () => go("upgrade"))];
+  if (r === "kids") return [h("h1", {}, "Your kids"), ...S.kids.map(k => h("p", {}, h("a", {href: "#/kids/" +
+    k.toLowerCase()}, k))), btn("Add a kid", () => go("kids/new")), btn("Delete", () => S.kids.pop())];
+  if (r === "kids/new") return [h("h1", {}, "Who are we setting up?"), field("First name"), field("Age"),
+    btn("Add", add), btn("Continue", () => { if (S.form["First name"]) { S.dialog = 1; render(); }
+                                             else go("kids"); })];
+  if (r === "kids/setup/login") return [h("h1", {}, S.newKid + "'s login"), field("Login ID"),
+    btn("Next", () => go("kids/setup/subjects"))];
+  if (r === "kids/setup/subjects") return [h("h1", {}, "Subjects for " + S.newKid), field("Grade"),
+    btn("Next", () => go("kids/setup/done"))];
+  if (r === "kids/setup/done") return [h("h1", {}, "All set"), h("p", {}, S.newKid + " is ready"),
+    btn("Done", () => go("kids"))];
+  if (r.startsWith("kids/")) return [h("h1", {}, r.split("/")[1] + ", 14"), h("p", {}, "Their subjects")];
+  if (r === "subjects") return [h("h1", {}, "Subjects"), ...Array.from({length: 40}, (_, i) =>
+    h("p", {}, h("a", {href: "#/subjects/" + (i + 1)}, "Subject " + (i + 1))))];
+  if (r.startsWith("subjects/")) return [h("h1", {}, "Subject " + r.split("/")[1]), h("p", {}, "Lessons")];
+  if (r === "settings") return [h("h1", {}, "Settings"), h("button", {role: "switch", "aria-checked": "false",
+    onclick: e => e.target.setAttribute("aria-checked", "true")}, "Email me weekly"),
+    h("p", {}, h("a", {href: "https://example.com/"}, "Help centre")), btn("Log out", () => go("home"))];
+  if (r === "upgrade") return [h("h1", {}, "Start your Pro plan"), field("Card number"), btn("Continue", () => 0)];
+  return [h("h1", {}, "Not found")];
+}
+function render() {
+  const r = location.hash.replace(/^#\//, "") || "home";
+  nav.replaceChildren(...TABS.map(t => btn(t, () => go(t.toLowerCase()), {role: "tab"})));
+  main.replaceChildren(...screen(r));
+  dlg.replaceChildren(...(S.dialog ? [h("div", {role: "dialog", "aria-modal": "true", "aria-label":
+    "Add " + S.form["First name"] + " first?", class: "dlg"}, h("p", {}, "You typed a name but didn't add them."),
+    btn("Skip", () => { S.form = {}; go("kids"); }), btn("Add", () => { S.dialog = null; add(); }))] : []));
+}
+addEventListener("hashchange", render); render();
+</script></body></html>

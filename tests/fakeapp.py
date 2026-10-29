@@ -20,6 +20,8 @@ class _Browser:
     def evaluate(self, js, **k):
         if js == screens.DIALOG_JS:
             return self.app.dialog["title"] if self.app.dialog else None
+        if js.startswith(screens.DIALOG_NODES_MARK):  # which of the asked nodes sit inside the open dialog
+            return list(range(len(self.app.dialog["buttons"]))) if self.app.dialog else None
         return None
 
     def call(self, method, **p):
@@ -35,9 +37,12 @@ class _Browser:
 
 class FakeApp(Session):
     def __init__(self, state="set up", flutter=False, sections=("Home", "Kids", "Subjects", "Settings"),
-                 strand_after=None, subjects=40):
+                 strand_after=None, subjects=40, real_page=False):
         self.state, self.flutter, self.tabs = state, flutter, list(sections)
         self.strand_after, self.stranded, self.subjects = strand_after, False, subjects
+        # real_page: like a browser, a dialog leaves the page behind it in the element list, and the page record
+        # is only updated when observed (live, 29 October: Continue pressed 40 times; an off-site link missed)
+        self.real_page = real_page
         self.kids, self.form, self.dialog, self.new_kid = ["Ava", "Leo"], {}, None, None
         self.pressed, self.typed = [], []
         self.browser, self.hazards, self.own_email, self.money_step = _Browser(self), True, "parent@demo.test", None
@@ -91,7 +96,8 @@ class FakeApp(Session):
 
     def _controls(self):
         if self.dialog:
-            return [("button", b, "click") for b in self.dialog["buttons"]]
+            behind = self._screen()[1] if self.real_page and not self.flutter else []
+            return [("button", b, "click") for b in self.dialog["buttons"]] + behind
         return self._screen()[1]
 
     def observe(self):
@@ -186,4 +192,5 @@ class FakeApp(Session):
             self.path = f"/subjects/{label.split()[1]}"
         if self.strand_after == label:
             self.stranded = True
-        self.observe()
+        if not self.real_page:
+            self.observe()

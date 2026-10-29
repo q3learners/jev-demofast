@@ -112,3 +112,28 @@ def test_a_section_tab_that_changes_things_is_never_a_section():
     app = FakeApp(sections=("Home", "Kids", "Apply"))
     m = walk(app)
     assert "Apply" not in m["account"]["sections"] and "Apply" not in app.pressed
+
+
+def test_in_a_real_page_the_dialog_is_answered_not_the_form_behind_it():
+    """Live, 29 October: the element list still holds the page behind a dialog; Continue was pressed 40 times."""
+    from test_behaviour_forms import Model as FormModel
+    from jev_demofast.behaviour import forms
+
+    class Offered(FormModel):
+        offered = []
+
+        def choose(self, instructions, options, state, allow_none=False):
+            if instructions == forms.DIALOG_Q:
+                self.offered.append(sorted(options.values()))
+            return super().choose(instructions, options, state, allow_none)
+    app, cf = FakeApp(real_page=True), Offered()
+    crawl_mod.crawl(app.restart, cf, "https://k12.test", log=lambda m: None, now="t1")
+    assert cf.offered == [["Add", "Skip"]] and app.pressed.count("Continue") == 1 and "Maya" in app.kids
+
+
+def test_in_a_real_page_leaving_the_app_is_seen():
+    """Live, 29 October: the page record was read before it was updated, and example.com was walked as "/"."""
+    m = walk(FakeApp(real_page=True))
+    did = {(a["screen"], a["control"]): a["outcome"] for a in m["actions"]}
+    assert did[("/settings", "Help centre")] == "refused: leaves the app → help.other.test"
+    assert "Settings: way back lost" not in m["left"]
