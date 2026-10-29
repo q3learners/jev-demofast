@@ -49,7 +49,7 @@ def run(cf, url, goal, out=None, picker="jev", fresh=False, max_steps=25, replan
                     if items:  # scroll the first item into view for the frame
                         s.browser.evaluate("(t => { const w=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); "
                                            "let n; while ((n=w.nextNode())) if (n.textContent.includes(t)) "
-                                           "{ n.parentElement.scrollIntoView({block:'start'}); window.scrollBy(0,-80); return; } })"
+                                           "{ n.parentElement.scrollIntoView({block:'start', behavior:'instant'}); window.scrollBy({top: -80, behavior:'instant'}); return; } })"
                                            f"({json.dumps(items[0][:40])})")
                         s.next_frame()
                     s.observe()

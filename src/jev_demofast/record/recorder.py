@@ -32,7 +32,7 @@ class Recorder:
             return
         if node is not None:
             self.s.browser.evaluate(f"(() => {{ const e=window.__jevFast?.nodes.get({node}); if (!e) return; "
-                                    "e.scrollIntoView({block:'center'}); e.style.outline='3px solid #f59e0b'; "
+                                    "e.scrollIntoView({block:'center', behavior:'instant'}); e.style.outline='3px solid #f59e0b'; "
                                     "e.style.outlineOffset='3px'; })()")
             if badge:
                 self.s.browser.evaluate(f"""(() => {{ const e=window.__jevFast?.nodes.get({node}); if (!e) return;
@@ -127,7 +127,7 @@ class Recorder:
             })()""")
             shot = self.s.browser.call("Page.captureScreenshot", **FRAME, captureBeyondViewport=True,
                                        clip={"x": 0, "y": 0, "width": info["vw"], "height": info["page_h"], "scale": 1})
-            self.s.browser.evaluate(f"window.scrollTo(0, {info['scroll_y']})")
+            self.s.browser.evaluate(f"window.scrollTo({{top: {info['scroll_y']}, behavior: 'instant'}})")
             path = os.path.join(self.out, "frames", f"page-{segment}.jpg")
             with open(path, "wb") as f:
                 f.write(base64.b64decode(shot["data"]))

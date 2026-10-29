@@ -25,7 +25,9 @@ PAUSE_S, HOLD_S = 1.0, 1.5  # on the screen between glides, and after the last
 LONE_PAGE_GLIDES = 6  # a one-page site is shown down its page, each stop a moment of its own for the voice-over
 TASK_STEPS = 12
 CAN_SCROLL = "scrollY + innerHeight < document.documentElement.scrollHeight - 40"
-TO_TOP = "window.scrollTo(0, 0)"
+# "instant", as in each step of a glide: selvage.run's scroll-behavior: smooth turned the jump to the top into an animation,
+# and the tour clicked a link it saw near the bottom as it slid away.
+TO_TOP = "window.scrollTo({top: 0, behavior: 'instant'})"
 HEADINGS = ("[...document.querySelectorAll('h1,h2,h3')].filter(h => { const r = h.getBoundingClientRect(); "
             "return r.bottom > 0 && r.top < innerHeight && h.innerText.trim(); })"
             ".slice(0, 4).map(h => h.innerText.trim().slice(0, 80))")
