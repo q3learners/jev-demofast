@@ -28,10 +28,11 @@ part of the goal THIS form serves, and give only the values meant for this form 
 email, not the signed-in user's). Secrets appear as placeholders like {{PASSWORD}}: copy them verbatim."""
 
 
-def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=True, dry_run=False, log=print):
+def run(cf, url, goal, index, out=None, fresh=False, max_steps=12, blur_typed=True, dry_run=False, log=print,
+        session=None):
     t0 = time.perf_counter()
     ms = lambda: round((time.perf_counter() - t0) * 1000)
-    s = Session(url, fresh=fresh)
+    s = (session or Session)(url, fresh=fresh)  # Session at call time: tests swap it for a fake
     rec = Recorder(out, s, blur_typed=blur_typed)
     rec.dry_run = dry_run
     log = rec.tee(log)

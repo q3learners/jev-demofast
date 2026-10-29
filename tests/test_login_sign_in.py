@@ -17,6 +17,7 @@ class Site:
     def __init__(self, after="/home", code="424242"):
         self.after, self.code, self.path, self.error = after, code, "/", ""
         self.typed, self.secret_typed, self.acts = {}, [], []
+        self.focus_ok = True
         outer = self
 
         class B:
@@ -32,6 +33,8 @@ class Site:
                     return outer.path == "/signin"
                 if js.startswith(sign_in_mod.FOCUS_SECRET_JS_START):
                     return outer.path == "/signin"
+                if js == sign_in_mod.FOCUSED_IS_PASSWORD_JS:
+                    return outer.path == "/signin" and outer.focus_ok
                 return None
         self.browser = B()
 
@@ -42,7 +45,7 @@ class Site:
         text = {"/signin": "Welcome back.\nEmail\nPassword" + (f"\n{self.error}" if self.error else ""),
                 "/code": "Check your email\nEnter the code we sent",
                 "/home": "Your family\nAdd student",
-                "/setup/verify": "Verify you are the parent\nCard number\nContinue"}[self.path]
+                "/setup/verify": "Verify you are the parent\nCard number\nContinue"}[self.path.split("?")[0]]
         self.page = {"url": ORIGIN + self.path, "text": text}
         return self.page
 
@@ -53,7 +56,7 @@ class Site:
         if self.path == "/code":
             return [{"node": 3, "role": "textbox", "label": "Code", "actions": {"fill": {}}},
                     {"node": 4, "role": "button", "label": "Verify", "actions": {"click": {}}}]
-        if self.path == "/setup/verify":
+        if self.path.split("?")[0] == "/setup/verify":
             return [{"node": 5, "role": "button", "label": "Continue", "actions": {"click": {}}}]
         return [{"node": 6, "role": "button", "label": "Add student", "actions": {"click": {}}}]
 
@@ -120,3 +123,25 @@ def test_the_result_never_contains_a_value():
         result = sign_in(Site(after=after), ORIGIN, FORM, GOOD, ask=lambda q: None, log=said.append)
         assert GOOD["password"] not in result and GOOD["email"] not in result
     assert not any(GOOD["password"] in m or GOOD["email"] in m for m in said)
+
+
+def test_a_corrected_answer_replaces_the_first_in_place():
+    values = {**GOOD, "password": "wrong"}
+    sign_in(Site(), ORIGIN, FORM, values, ask=lambda q: {"id": q["id"], "form": "f1", "values": dict(GOOD)},
+            log=lambda m: None)
+    assert values == GOOD
+
+
+def test_a_secret_is_never_typed_unless_a_password_input_has_focus():
+    """Security review: if the click left focus elsewhere, the password would be typed into whatever had it."""
+    s = Site()
+    s.focus_ok = False
+    assert sign_in(s, ORIGIN, FORM, dict(GOOD), log=lambda m: None).startswith("failed:")
+    assert s.secret_typed == []
+
+
+def test_a_stuck_page_is_named_by_its_path_only():
+    """Security review: the landing address may carry a token or the email in its query."""
+    s = Site(after="/setup/verify?email=parent@demo.test&t=abc")
+    result = sign_in(s, ORIGIN, FORM, dict(GOOD), log=lambda m: None)
+    assert result == "stuck: /setup/verify"

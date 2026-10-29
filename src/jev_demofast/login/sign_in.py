@@ -3,6 +3,7 @@ straight into the focused password input with Input.insertText, so it never pass
 decisions log or a frame. Nothing returned or logged contains a value."""
 import json
 import re
+from urllib.parse import urlparse
 
 from ..drive.guards import hazard
 from ..explore.buttons import SIGN_IN_FORM_JS
@@ -12,6 +13,7 @@ SUBMIT = re.compile(r"\b(sign ?in|log ?in|continue|submit|next|verify)\b", re.I)
 ERROR = re.compile(r"incorrect|invalid|wrong|doesn't match|does not match|try again|not found|no account", re.I)
 CODE_PAGE = re.compile(r"\bcode\b|verif", re.I)
 FOCUS_SECRET_JS_START = "(label => {"
+FOCUSED_IS_PASSWORD_JS = "document.activeElement?.tagName === 'INPUT' && document.activeElement.type === 'password'"
 
 
 def _focus_secret_js(label):
@@ -44,6 +46,8 @@ def _type_secret(s, label, value):
     if isinstance(at, dict):  # a real click focuses it for frameworks that ignore focus() (Flutter)
         for kind in ("mousePressed", "mouseReleased"):
             s.browser.call("Input.dispatchMouseEvent", type=kind, x=at["x"], y=at["y"], button="left", clickCount=1)
+    if s.browser.evaluate(FOCUSED_IS_PASSWORD_JS) is not True:  # never type a secret into whatever else has focus
+        return False
     s.browser.call("Input.insertText", text=value)
     return True
 
@@ -103,7 +107,8 @@ def sign_in(s, origin, form, values, ask=None, log=print):
         answer = ask(question([form], "That didn't work. Try the demo account again?", retry=why, qid="q2"))
         if answer is None:
             return f"failed: {why}"
-        values = answer["values"]
+        values.clear()  # the caller's answer is corrected in place: the recording signs in with what worked
+        values.update(answer["values"])
     code = _code_field(s)
     if code is not None:
         label = _first_line(code["label"]) or "Code"
@@ -118,7 +123,7 @@ def sign_in(s, origin, form, values, ask=None, log=print):
     page = s.observe()
     ways_on = [e for e in s.elements() if "click" in e["actions"] and e["role"] in ("button", "link")]
     if ways_on and all(hazard(_first_line(e["label"]), context=page.get("text") or "") for e in ways_on):
-        where = "/" + page["url"].split("/", 3)[3] if page["url"].count("/") >= 3 else page["url"]
+        where = _hide(urlparse(page["url"]).path or "/", values)  # never its query: it may carry a token or the email
         log(f"login: signed in, but {where} only offers steps a demo never takes")
         return f"stuck: {where}"
     log("login: signed in")
