@@ -1,6 +1,16 @@
 """The walk through the signed-in app that writes the blueprint: the account's state, every section, every control
 mapping may press, back to where it started each time, within budget. Every press goes through Session.act, so the
 login branch's safety rules (hazard labels, the money judge, the own-email rule) apply unchanged."""
+import re
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+from ..drive.guards import HazardStop
+from ..drive.session import StalePage
+from .model import add_action, add_screen, empty, merge
+from .rules import may_press, outcome
+from .screens import nav_labels, read_screen, sections
 
 ACCOUNT = """You see the first screen of a web app right after signing in. Is the account still partway through a setup
 or onboarding flow it hasn't finished (a step list with a "current step", a "finish setting up" screen)? Reply with
@@ -21,3 +31,181 @@ def account_state(cf, screen, log=print):
     return f"partway: {step}" if ans["setup_unfinished"] else "set up"
 
 
+
+
+
+@dataclass
+class Budget:
+    total_s: float = 1200  # the founder: 10-20 minutes for a first map is fine, because it's reused
+    steps_per_section: int = 40
+    items_per_list: int = 2  # one or two subjects, not all forty
+
+
+@dataclass
+class _Walk:
+    """One crawl's moving parts: the session (replaced when the way back is lost), the map, the clock."""
+    s: object
+    new_session: object
+    cf: object
+    m: dict
+    budget: Budget
+    started: float
+    now: str
+    log: object
+    nav: list = field(default_factory=list)
+
+    def out_of_time(self):
+        return time.monotonic() - self.started >= self.budget.total_s
+
+
+def _now():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _press(w, label):
+    """Press the clickable element labelled `label` through Session.act. False if it isn't on screen."""
+    e = next((e for e in w.s.elements() if "click" in e["actions"]
+              and (e["label"] or "").strip().split("\n")[0] == label), None)
+    if e is None:
+        return False
+    w.s.act(e, "click")
+    w.s.wait_for_page()
+    return True
+
+
+def _find_sections(w, first_key):
+    """Press the first navigation label that leads elsewhere; the labels on both screens are the app's sections."""
+    home = nav_labels(w.s)
+    for label in home:
+        e = next(e for e in w.s.elements() if (e["label"] or "").strip().split("\n")[0] == label)
+        if not may_press(e, filled_here=False):
+            continue
+        try:
+            _press(w, label)
+        except (HazardStop, StalePage):
+            continue
+        key, _ = read_screen(w.s)
+        if key != first_key:
+            found = sections(home, nav_labels(w.s))
+            _back_to(w, None, w.m["screens"][first_key]["url"], first_key)
+            return found
+    return []
+
+
+def _back_to(w, section, url, key):
+    """Back on screen `key`: reopen its address, else press the section's tab, else a new session and the tab.
+    False when the way back is lost."""
+    for attempt in ("address", "tab", "new session"):
+        try:
+            if attempt == "new session":
+                w.s.close()
+                w.s = w.new_session(url)
+            if attempt in ("address", "new session"):
+                w.s.browser.call("Page.navigate", url=url)
+                w.s.wait_loaded()
+            if attempt in ("tab", "new session") and section and read_screen(w.s)[0] != key:
+                _press(w, section)
+            if read_screen(w.s)[0] == key:
+                return True
+        except (HazardStop, StalePage, TimeoutError):
+            continue
+    return False
+
+
+def _list_group(label, landed):
+    """A press in a list: its landing path's parent ("/subjects/7" → "/subjects/*"), else None."""
+    path = landed.split(" · ")[0]
+    return re.sub(r"/[^/]+$", "/*", path) if path.count("/") >= 2 else None
+
+
+def _walk_section(w, section, start_key):
+    """Every screen reached in this section, every control mapping may press on it, back each time."""
+    queue, done, steps = [start_key], set(), 0
+    while queue:
+        key = queue.pop(0)
+        if key in done:
+            continue
+        done.add(key)
+        url = w.m["screens"][key]["url"]
+        if not _back_to(w, section, url, key):
+            w.m["left"].append(f"{section}: way back lost")
+            return
+        _, screen = read_screen(w.s)
+        if screen["fields"]:  # forms are walked by forms.handle (Task 7)
+            continue
+        groups, skipped = {}, {}
+        for label in screen["controls"]:
+            if label in w.nav:
+                continue
+            if steps >= w.budget.steps_per_section or w.out_of_time():
+                w.m["left"].append(f"{section}: out of steps")
+                return
+            e = next((e for e in w.s.elements() if (e["label"] or "").strip().split("\n")[0] == label), None)
+            if e is None or not may_press(e, filled_here=False):
+                if e is not None and e.get("role") not in ("switch", "checkbox", "radio"):
+                    add_action(w.m, key, label, "click", f"refused: {label}", w.now)
+                continue
+            last = groups.get(e["role"])
+            if last and last[1] >= w.budget.items_per_list:
+                skipped[last[0]] = skipped.get(last[0], 0) + 1
+                continue
+            steps += 1
+            before = w.s.page.get("text", "")
+            try:
+                _press(w, label)
+            except HazardStop:
+                add_action(w.m, key, label, "click", f"refused: {label}", w.now)
+                continue
+            except StalePage:
+                continue
+            after_key, after = read_screen(w.s)
+            add_action(w.m, key, label, "click", outcome(key, before, after_key, after["kind"], w.s.page.get("text"),
+                                                         []), w.now)
+            if after["kind"] == "dialog":
+                w.s.browser.call("Input.dispatchKeyEvent", type="keyDown", key="Escape", code="Escape",
+                                 windowsVirtualKeyCode=27)
+                w.s.browser.call("Input.dispatchKeyEvent", type="keyUp", key="Escape", code="Escape",
+                                 windowsVirtualKeyCode=27)
+            if after_key != key:
+                if after_key not in w.m["screens"]:
+                    add_screen(w.m, after_key, {**after, "section": section}, w.now)
+                    queue.append(after_key)
+                group = _list_group(label, after_key)
+                if group and last and last[0] == group:
+                    groups[e["role"]] = (group, last[1] + 1)
+                elif group:
+                    groups[e["role"]] = (group, 1)
+                if not _back_to(w, section, url, key):
+                    w.m["left"].append(f"{section}: way back lost")
+                    return
+        for group, n in skipped.items():
+            w.m["left"].append(f"{key}: {n} more items")
+
+
+def crawl(new_session, cf, origin, saved=None, budget=None, log=print, now=None):
+    """The blueprint of the signed-in app at `origin`, merged into `saved`. new_session(url) is a signed-in session
+    (Login.session)."""
+    w = _Walk(new_session(origin + "/"), new_session, cf, empty(), budget or Budget(), time.monotonic(),
+              now or _now(), log)
+    try:
+        first_key, first = read_screen(w.s)
+        w.m["account"]["state"] = account_state(cf, first, log)
+        add_screen(w.m, first_key, first, w.now)
+        w.nav = _find_sections(w, first_key)
+        w.m["account"]["sections"] = list(w.nav)
+        seen = set()
+        for section in w.nav:
+            if w.out_of_time():
+                w.m["left"].append(f"{section}: not walked (out of time)")
+                continue
+            if not _back_to(w, None, w.m["screens"][first_key]["url"], first_key) or not _press(w, section):
+                w.m["left"].append(f"{section}: couldn't open it")
+                continue
+            key, screen = read_screen(w.s)
+            add_screen(w.m, key, {**screen, "kind": "tab", "section": section}, w.now)
+            seen.add(section)
+            _walk_section(w, section, key)
+            log(f"blueprint: {section} walked")
+    finally:
+        w.s.close()
+    return merge(saved, w.m, seen, w.now)

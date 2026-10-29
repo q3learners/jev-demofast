@@ -36,3 +36,52 @@ def test_set_up():
 def test_model_down_is_unknown():
     cf = Model({crawl_mod.ACCOUNT: {}}, fail={crawl_mod.ACCOUNT})
     assert account_state(cf, {"texts": [], "controls": []}, log=lambda m: None) == "unknown"
+
+
+SET_UP = {crawl_mod.ACCOUNT: {"setup_unfinished": False, "current_step": ""}}
+
+
+def walk(app, budget=None, cf=None):
+    return crawl_mod.crawl(app.restart, cf or Model(SET_UP), "https://k12.test", budget=budget, log=lambda m: None,
+                           now="t1")
+
+
+def test_every_section_is_visited():
+    app = FakeApp()
+    m = walk(app)
+    assert m["account"] == {"state": "set up", "sections": ["Home", "Kids", "Subjects", "Settings"]}
+    assert {"/home", "/kids", "/subjects", "/settings"} <= set(m["screens"])
+    assert m["screens"]["/kids"]["section"] == "Kids"
+
+
+def test_refused_controls_are_recorded_not_pressed():
+    app = FakeApp()
+    m = walk(app)
+    assert not {"Delete", "Log out", "Upgrade", "Email me weekly", "Verify with a card"} & set(app.pressed)
+    assert all(a["outcome"].startswith("refused") for a in m["actions"] if a["control"] in ("Delete", "Log out"))
+
+
+def test_what_a_press_did_is_recorded():
+    m = walk(FakeApp())
+    did = {(a["screen"], a["control"]): a["outcome"] for a in m["actions"]}
+    assert did[("/kids", "Ava")] == "→ /kids/ava" and did[("/kids", "Add a kid")] == "→ /kids/new"
+
+
+def test_long_lists_open_two_items():
+    app = FakeApp()
+    m = walk(app)
+    assert sum(label.startswith("Subject ") for label in app.pressed) == 2
+    assert "/subjects: 38 more items" in m["left"]
+
+
+def test_lost_way_back_reopens_the_section():
+    app = FakeApp(strand_after="Ava")
+    m = walk(app)
+    assert ("/kids", "Leo") in {(a["screen"], a["control"]) for a in m["actions"]}
+    assert "/settings" in m["screens"]
+
+
+def test_the_total_budget_stops_the_walk():
+    app = FakeApp()
+    m = walk(app, budget=crawl_mod.Budget(total_s=0))
+    assert m["left"] == [f"{s}: not walked (out of time)" for s in ("Home", "Kids", "Subjects", "Settings")]
