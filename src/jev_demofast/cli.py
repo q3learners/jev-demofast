@@ -272,6 +272,8 @@ def main(argv=None):
     d.add_argument("--login", action="store_true",
                    help="the product has a login: once the public site is mapped, ask for a demo account and record "
                         "signed in (nothing you type is kept)")
+    d.add_argument("--fresh-map", action="store_true",
+                   help="with --login: map the signed-in app from nothing instead of learning from its saved blueprint")
     d.add_argument("--login-via", choices=["terminal", "stdin"], default="terminal",
                    help="where the login question is asked: this terminal, or one JSON line on stdin (a host app)")
     d.add_argument("--work", help="folder for frames (default: <out>.run)")

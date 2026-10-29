@@ -1,0 +1,212 @@
+"""A K-12-shaped app behind the Session interface, for the behaviour map's tests. It subclasses the real Session, so
+every press goes through Session.act and its safety checks (hazard labels, the money judge, the own-email rule).
+
+Set up: tabs Home, Kids, Subjects, Settings on every screen. Kids lists kids with "Add a kid" and "Delete"; the add
+form (First name, Age, Add, Continue) asks "Add <name> first?" (Skip / Add) when Continue is pressed with a name typed;
+adding starts a wizard: "<name>'s login" → "Subjects for <name>" → "All set". Subjects has 40 items. Settings has a
+switch and "Log out". Home has "Upgrade" (a card form). Partway: the setup step "Your kids", then the card check.
+With flutter=True a dialog hides everything else, as K-12's did live ("Skip Add")."""
+from jev_demofast.browser.cdp import StalePage
+from jev_demofast.behaviour import screens
+from jev_demofast.drive.session import Session
+
+ORIGIN = "https://k12.test"
+
+
+class _Browser:
+    def __init__(self, app):
+        self.app = app
+
+    def evaluate(self, js, **k):
+        if js == screens.DIALOG_JS:
+            return self.app.dialog["title"] if self.app.dialog else None
+        if js.startswith(screens.DIALOG_NODES_MARK):  # which of the asked nodes sit inside the open dialog
+            return list(range(len(self.app.dialog["buttons"]))) if self.app.dialog else None
+        return None
+
+    def call(self, method, **p):
+        if method == "Page.navigate":
+            self.app.goto(p["url"])
+        elif method == "Input.dispatchKeyEvent" and p.get("key") == "Escape" and p.get("type") == "keyDown":
+            self.app.dialog = None
+        return {"data": ""}
+
+    def act(self, action, page, text=None):
+        self.app.do(action["node"], text)
+
+
+class FakeApp(Session):
+    def __init__(self, state="set up", flutter=False, sections=("Home", "Kids", "Subjects", "Settings"),
+                 strand_after=None, subjects=40, real_page=False, create_leaves=False, tips=False,
+                 kid_buttons=False, search=False, archive=False):
+        self.state, self.flutter, self.tabs = state, flutter, list(sections)
+        self.strand_after, self.stranded, self.subjects = strand_after, False, subjects
+        # real_page: like a browser, a dialog leaves the page behind it in the element list, and the page record
+        # is only updated when observed (live, 29 October: Continue pressed 40 times; an off-site link missed)
+        self.real_page = real_page
+        # review cases: Create hands off to a partner site with a form; a "Tips" dialog from a plain click; kids
+        # drawn as buttons (Flutter); a search box on the Subjects tab
+        self.create_leaves, self.tips, self.kid_buttons, self.search = create_leaves, tips, kid_buttons, search
+        self.archive = archive  # "Archive" opens "Archive Ava? Yes / Cancel": confirming changes an existing kid
+        self.kids, self.form, self.dialog, self.new_kid = ["Ava", "Leo"], {}, None, None
+        self.pressed, self.typed = [], []
+        self.browser, self.hazards, self.own_email, self.money_step = _Browser(self), True, "parent@demo.test", None
+        self.is_flutter, self.host, self.start_url = flutter, "k12.test", ORIGIN + "/"
+        self.path = "/setup/kids" if state == "partway" else "/home"
+        self.observe()
+
+    # --- what the screen shows ----------------------------------------------------------------------------------
+    def _screen(self):
+        """(texts, [(role, label, kind)]) for the current path."""
+        p, tabs = self.path, [("tab", t, "click") for t in self.tabs]
+        if self.stranded:
+            return ["Something went wrong"], []
+        if p == "/home":
+            return ["Welcome back", "Your family at a glance"], tabs + [("button", "Upgrade", "click")]
+        if p == "/kids":
+            return ["Your kids", *self.kids], tabs + [("button" if self.kid_buttons else "link", k, "click")
+                                                      for k in self.kids] + \
+                ([("button", "Tips", "click")] if self.tips else []) + \
+                ([("button", "Archive", "click")] if self.archive else []) + \
+                [("button", "Add a kid", "click"), ("button", "Delete", "click")]
+        if p.startswith("/kids/") and p.count("/") == 2 and p != "/kids/new":
+            return [f"{p.split('/')[2].title()}, 14", "Their subjects"], tabs
+        if p in ("/kids/new", "/setup/kids"):
+            head = ["Your kids, current step", "Verify you are the parent, next"] if p == "/setup/kids" else []
+            return head + ["Who are we setting up?", *(self.kids if p == "/setup/kids" else [])], \
+                (tabs if p == "/kids/new" else []) + [("textbox", "First name", "fill"), ("textbox", "Age", "fill"),
+                                                      ("button", "Add", "click"), ("button", "Continue", "click")]
+        if p == "/kids/setup/login":
+            return [f"{self.new_kid}'s login"], [("textbox", "Login ID", "fill"), ("button", "Next", "click")]
+        if p == "/kids/setup/subjects":
+            return [f"Subjects for {self.new_kid}"], [("textbox", "Grade", "fill"), ("button", "Next", "click")]
+        if p == "/kids/setup/done":
+            return ["All set", f"{self.new_kid} is ready"], tabs + [("button", "Done", "click")]
+        if p == "/subjects":
+            return ["Subjects"], tabs + ([("searchbox", "Search subjects", "fill")] if self.search else []) + \
+                [("link", f"Subject {i}", "click") for i in range(1, self.subjects + 1)]
+        if p.startswith("/subjects/"):
+            return [f"Subject {p.split('/')[2]}", "Lessons"], tabs
+        if p == "/settings":
+            return ["Settings"], tabs + [("switch", "Email me weekly", "click"), ("button", "Help centre", "click"),
+                                         ("button", "Log out", "click")]
+        if p == "/offsite":
+            return ["Help centre"], []
+        if p == "/partner":
+            return ["Partner signup"], [("textbox", "Nickname", "fill"), ("button", "Create", "click")]
+        if p == "/upgrade":
+            return ["Start your Pro plan", "Card number"], tabs + [("textbox", "Card number", "fill"),
+                                                                   ("button", "Continue", "click")]
+        if p == "/contacts/new":
+            return ["New contact"], [("textbox", "Email", "fill"), ("textbox", "Nickname", "fill"),
+                                     ("button", "Create", "click")]
+        if p == "/setup/verify":
+            return ["Prove you're the parent.", "Verify you are the parent, current step"], \
+                [("button", "Verify with a card", "click")]
+        return [p.strip("/").title()], tabs
+
+    def _controls(self):
+        if self.dialog:
+            behind = self._screen()[1] if self.real_page and not self.flutter else []
+            return [("button", b, "click") for b in self.dialog["buttons"]] + behind
+        return self._screen()[1]
+
+    def observe(self):
+        texts, _ = self._screen()
+        controls = self._controls()
+        if self.dialog and self.flutter:
+            text = " ".join(label for _, label, _ in controls)
+        else:
+            text = "\n".join(([self.dialog["title"]] if self.dialog else []) + texts +
+                             [label for _, label, _ in controls])
+        url = "https://help.other.test" + ("/partner" if self.path == "/partner" else "/") \
+            if self.path in ("/offsite", "/partner") else ORIGIN + self.path
+        self.page = {"url": url, "title": "TutorQ K-12", "text": text}
+        return self.page
+
+    def elements(self):
+        return [{"node": i, "role": role, "label": label, "actions": {kind: {"node": i}}}
+                for i, (role, label, kind) in enumerate(self._controls())]
+
+    def refind(self, element):
+        e = next((e for e in self.elements() if e["node"] == element["node"] and e["label"] == element["label"]), None)
+        if e is None:
+            raise StalePage(f"{element['label']!r} is gone")
+        return e
+
+    def arm(self): pass
+    def wait_for_page(self, *a, **k): return "settled"
+    def wait_loaded(self, *a, **k): pass
+    def next_frame(self): pass
+    def close(self): pass
+
+    def restart(self, url=None):
+        """A new session: back on the first screen, no longer stranded."""
+        self.stranded, self.dialog = False, None
+        self.path = "/setup/kids" if self.state == "partway" else "/home"
+        self.observe()
+        return self
+
+    # --- what pressing does -------------------------------------------------------------------------------------
+    def goto(self, url):
+        if not self.stranded:
+            self.path, self.dialog = url.removeprefix(ORIGIN) or "/home", None
+        self.observe()
+
+    def _add(self):
+        name = self.form.get("First name")
+        if name:
+            self.kids.append(name)
+            self.new_kid, self.form = name, {}
+            if self.path == "/kids/new":
+                self.path = "/kids/setup/login"
+
+    def do(self, node, text):
+        role, label, kind = self._controls()[node]
+        if kind == "fill":
+            self.form[label] = text
+            self.typed.append(text)
+            self.observe()
+            return
+        self.pressed.append(label)
+        if self.dialog:
+            self.dialog = None
+            if label == "Add":
+                self._add()
+            elif self.path == "/kids/new":
+                self.path, self.form = "/kids", {}
+        elif label in self.tabs:
+            self.path = "/" + label.lower()
+        elif label == "Add a kid":
+            self.path = "/kids/new"
+        elif label == "Add":
+            self._add()
+        elif label == "Continue" and self.path in ("/kids/new", "/setup/kids"):
+            if self.form.get("First name"):
+                self.dialog = {"title": f"Add {self.form['First name']} first?", "buttons": ["Skip", "Add"]}
+            else:
+                self.path = "/setup/verify" if self.path == "/setup/kids" else "/kids"
+        elif label == "Next":
+            self.path = {"/kids/setup/login": "/kids/setup/subjects", "/kids/setup/subjects": "/kids/setup/done"}[
+                self.path]
+            self.form = {}
+        elif label == "Create":
+            self.path = "/partner" if self.create_leaves and self.path == "/contacts/new" else "/kids"
+        elif label == "Archive":
+            self.dialog = {"title": f"Archive {self.kids[0]}?", "buttons": ["Yes", "Cancel"]}
+        elif label == "Tips":
+            self.dialog = {"title": "Tips", "buttons": ["Got it"]}
+        elif label == "Done":
+            self.path = "/kids"
+        elif label == "Help centre":
+            self.path = "/offsite"
+        elif label == "Upgrade":
+            self.path = "/upgrade"
+        elif label in self.kids:
+            self.path = f"/kids/{label.lower()}"
+        elif label.startswith("Subject "):
+            self.path = f"/subjects/{label.split()[1]}"
+        if self.strand_after == label:
+            self.stranded = True
+        if not self.real_page:
+            self.observe()

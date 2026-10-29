@@ -353,3 +353,15 @@ def test_a_map_from_before_logins_were_noticed_has_nothing_behind_login(tmp_path
     cf = Writer("Script.")
     story.write(cf, PROMPT, SITE, str(tmp_path), log=lambda m: None)
     assert cf.calls[0]["user"]["what_we_know"]["behind_login"] == []
+
+
+def test_story_context_has_sections_and_jobs():
+    """A logged-in map's blueprint reaches the founder's script: its sections and the jobs mapping proved."""
+    from jev_demofast.narrate.story import context
+    index = {"_site": {"start": "https://k12.test/"}, "_behaviour": {
+        "account": {"state": "set up", "sections": ["Home", "Kids"]},
+        "jobs": [{"name": "Add a kid", "result": "Maya is ready", "proven": True, "steps": []},
+                 {"name": "Verify", "result": "", "proven": False, "stopped": "seen, not finished", "steps": []}]}}
+    known = context(index)
+    assert known["sections"] == ["Home", "Kids"]
+    assert known["jobs"] == [{"job": "Add a kid", "ends_with": "Maya is ready"}]
