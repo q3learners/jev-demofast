@@ -78,6 +78,9 @@ class FakeApp(Session):
         if p == "/upgrade":
             return ["Start your Pro plan", "Card number"], tabs + [("textbox", "Card number", "fill"),
                                                                    ("button", "Continue", "click")]
+        if p == "/contacts/new":
+            return ["New contact"], [("textbox", "Email", "fill"), ("textbox", "Nickname", "fill"),
+                                     ("button", "Create", "click")]
         if p == "/setup/verify":
             return ["Prove you're the parent.", "Verify you are the parent, current step"], \
                 [("button", "Verify with a card", "click")]
@@ -165,6 +168,8 @@ class FakeApp(Session):
             self.path = {"/kids/setup/login": "/kids/setup/subjects", "/kids/setup/subjects": "/kids/setup/done"}[
                 self.path]
             self.form = {}
+        elif label == "Create":
+            self.path = "/kids"
         elif label == "Done":
             self.path = "/kids"
         elif label == "Upgrade":

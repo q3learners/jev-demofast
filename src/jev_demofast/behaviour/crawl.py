@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from ..drive.guards import HazardStop
 from ..drive.session import StalePage
+from . import forms
 from .model import add_action, add_screen, empty, merge
 from .rules import may_press, outcome
 from .screens import nav_labels, read_screen, sections
@@ -131,7 +132,8 @@ def _walk_section(w, section, start_key):
             w.m["left"].append(f"{section}: way back lost")
             return
         _, screen = read_screen(w.s)
-        if screen["fields"]:  # forms are walked by forms.handle (Task 7)
+        if screen["fields"]:
+            forms.handle(w.s, w.cf, w.m, key, screen, w.m["account"]["state"], w.budget, w.log, w.now, section)
             continue
         groups, skipped = {}, {}
         for label in screen["controls"]:
@@ -191,6 +193,10 @@ def crawl(new_session, cf, origin, saved=None, budget=None, log=print, now=None)
         first_key, first = read_screen(w.s)
         w.m["account"]["state"] = account_state(cf, first, log)
         add_screen(w.m, first_key, first, w.now)
+        if w.m["account"]["state"].startswith("partway"):  # a setup step: walked up to its finishing click only
+            add_screen(w.m, first_key, {**first, "kind": "wizard-step", "section": "Setup"}, w.now)
+            forms.handle(w.s, cf, w.m, first_key, first, w.m["account"]["state"], w.budget, log, w.now, "Setup")
+            return merge(saved, w.m, {"Setup"}, w.now)
         w.nav = _find_sections(w, first_key)
         w.m["account"]["sections"] = list(w.nav)
         seen = set()
