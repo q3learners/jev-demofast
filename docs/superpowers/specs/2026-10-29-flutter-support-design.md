@@ -34,6 +34,12 @@ Measured with the tool's own `Session`, page reader and click, in its isolated C
   already clicks that way; nothing new is needed, but no new code may click Flutter nodes from JavaScript.)
 - Flutter navigates with buttons, not `<a href>` links, so the explorer, which discovers pages by following links,
   would map one page and stop.
+- **Opening a page by its address shows the same screen as clicking to it** (checked for `/setup/account?mode=signin`,
+  `/setup/account?mode=signup`, `/setup/account`, `/setup/student`, `/setup/kid`). So the explorer can visit and
+  return to button-found pages with `Page.navigate`. A logged-out `/today` is moved to `/setup/who`.
+- **The query string matters:** `?mode=signin` ("Welcome back.") and `?mode=signup` (the new-account steps) are
+  different screens.
+- `/setup/kid` (a child's login ID and passcode) has an **enabled** "Sign in" button that submits the form.
 - The K-12 web app's addresses are listed in its source, `tutorq_campus/lib/k12/web/router.dart` (`/setup/who`,
   `/setup/account`, `/setup/student`, `/setup/kid`, `/today`, `/tutor`, …). The explorer must not depend on source
   code; it's mentioned here only as a way to check what the explorer found.
@@ -48,8 +54,9 @@ Measured with the tool's own `Session`, page reader and click, in its isolated C
 3. **Give the founder's script something true to say.** When a page has no `h1`–`h3`, the map's `texts` come from
    the accessibility layer's visible text, with the same visibility rules and caps as headings.
 4. **Record it.** A demo of k12.tutorq.ai (logged out) maps, writes a script and records with real clicks, ending
-   `verified: True`, e.g. "Show parents how TutorQ K-12 gets them set up" going `/setup/who` → "I'm a parent" →
-   the account step.
+   `verified: True`, e.g. "Show students how they get into TutorQ K-12" going `/setup/who` → "I'm a student" →
+   `/setup/student` ("How do you get in?"). It ends on a page that isn't a sign-in form, because
+   `shots.offerable` leaves sign-in pages out on purpose, and this design doesn't change that.
 
 ## Non-goals (this design)
 
@@ -93,6 +100,13 @@ For each page the explorer visits, after reading it:
 3. Return to the page before the next button: navigate to its address and turn the accessibility layer on again.
    Don't rely on the browser's Back: Flutter's history may not match.
 
+**Button-found pages are their own routes, query included.** `explore/templates.py` groups link-found paths that
+differ in one segment (`/setup/who`, `/setup/account`, `/setup/student` would become `/setup/:handle`), and the
+link reader keeps only the path. Grouped, the account step's password field would mark the whole route `sign_in`,
+and `shots.offerable` would drop every K-12 page. So a path found through a button keeps its query string and is
+never grouped. Link-found paths are grouped as today, so other sites' maps don't change. (Decision made while
+writing the spec. If wrong, the cost is K-12 pages that could have been grouped.)
+
 Discovery counts against the explorer's existing limits (`max_pages`, `max_minutes`). Buttons with the same label on
 the same page are tried once (K-12's "Who is this?" page has two "Sign in" buttons, both going to the same place).
 
@@ -102,13 +116,15 @@ A button is clicked during discovery only if **all** of these hold:
 
 - `guards.blocked(label)` is false (sign up, register, create account, delete, log out, Google/Apple sign-in…).
 - `guards.CHANGES` doesn't match the label (save, submit, send, pay, confirm, verify…).
-- It isn't the submit button of a form with filled or required fields.
+- **The page has no text or password field.** Flutter's accessibility layer has no `<form>`, so there's no reliable
+  way to tell a form's submit button from a navigation button. A page with a field gets no button clicks during
+  discovery at all. (Decision made while writing the spec. It drops "I need an account" and "I already have one" on
+  the account pages, but both screens are reached from `/setup/who` anyway. If wrong, the cost is a missed link,
+  never a submitted form.)
 
-Measured against K-12: "I'm a parent", "I'm a student", "Sign in", "Back" and "I need an account" pass;
-"I need an account" leads to the account step, which is a form, and nothing on it is submitted. **Builder: verify
-"Sign in" on the who page is a navigation button, while "Sign in" on the account page is a form submit and must not
-be clicked** (it's disabled until the fields are filled, so today's snapshot leaves it out, but the rule must not
-depend on that).
+Measured against K-12: on `/setup/who`, "I'm a parent", "I'm a student" and both "Sign in" buttons are clicked. On
+`/setup/student`, "Back", "My parent gave me a login" and "I'm setting it up myself" are clicked. Nothing on
+`/setup/account` or `/setup/kid` is clicked: they have fields, and `/setup/kid`'s "Sign in" would submit.
 
 ### The login wall on a Flutter app
 
@@ -118,8 +134,10 @@ pages through buttons, and logged out it can't. Recognising the wall is part of 
 
 ## How we'll know it works
 
-- **k12.tutorq.ai, logged out:** the map has `/setup/who` with links found by buttons to the account step
-  (`/setup/account?...`) and the student step (`/setup/student`), and the account step is marked `sign_in`. A demo
+- **k12.tutorq.ai, logged out:** the map has `/setup/who` with links found by buttons to
+  `/setup/account?mode=signin`, `/setup/account?mode=signup` (or `/setup/account`) and `/setup/student`; and
+  `/setup/student` with a link to `/setup/kid`. Each is its own entry, and the account pages and `/setup/kid` are
+  marked `sign_in`. A demo
   with the brief in goal 4 records and verifies, with real clicks on camera.
 - **No change elsewhere:** a non-Flutter site's map is identical before and after (the tests' fake sites, and one
   real run each on onecentdemo.com and selvage.run).
@@ -127,6 +145,8 @@ pages through buttons, and logged out it can't. Recognising the wall is part of 
   - a fake Flutter page with no text until the placeholder is clicked is read after turning on accessibility;
   - discovery records a button's destination as a link and queues it;
   - a blocked or data-changing button is never clicked;
+  - on a page with a text or password field, no button is clicked;
+  - a button-found path keeps its query and isn't grouped with its neighbours, while link-found paths group as before;
   - a button that stays on the same address adds no link;
   - the layer is turned on again after a reload.
 
