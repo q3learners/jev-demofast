@@ -1,6 +1,7 @@
 """--login: once the public site is mapped, ask for a demo account, sign in off camera, map the logged-in app, and
 record it signed in. The answer lives only in a Login object for the run; every session it makes is a new isolated
 browser context (the persistent profile never holds the founder's session) with the logged-in hazards on."""
+from ..drive.money import judge
 from ..drive.session import Session, origin
 from .ask import asker, question
 from .forms import sign_in_forms
@@ -11,9 +12,10 @@ LOGGED_IN_MAP = "site-map-logged-in.json"  # in the run's work folder only: it h
 
 
 class Login:
-    def __init__(self, origin_, form, values, own_email, session_cls, log, ask=None):
+    def __init__(self, origin_, form, values, own_email, session_cls, log, ask=None, money_step=None):
         self._origin, self._form, self._values = origin_, form, values
         self._own_email, self._session_cls, self._log, self._ask = own_email, session_cls, log, ask
+        self._money_step = money_step
 
     @classmethod
     def prepare(cls, cf, url, index, ask, log=print, session=Session, find_forms=sign_in_forms):
@@ -40,7 +42,8 @@ class Login:
                 return None
             email = next((values[f["name"]] for f in form["fields"]
                           if not f["secret"] and "mail" in f["label"].lower()), None)
-            return cls(site, form, values, email, session, log, ask=ask)
+            return cls(site, form, values, email, session, log, ask=ask,
+                       money_step=judge(cf) if cf is not None else None)
         finally:
             s.close()
 
@@ -53,7 +56,7 @@ class Login:
                                            log=self._log) != "signed in":
             s.close()
             raise RuntimeError("login: couldn't sign in for the recording")
-        s.hazards, s.own_email = True, self._own_email
+        s.hazards, s.own_email, s.money_step = True, self._own_email, self._money_step
         return s
 
     def forget(self):

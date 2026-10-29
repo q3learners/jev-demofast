@@ -45,14 +45,9 @@ def test_a_step_list_naming_the_card_check_is_not_a_money_page():
     assert hazard("Verify with a card")
 
 
-def test_the_card_check_step_itself_is_still_a_money_page():
-    """Security review: on the card check's own page (the step list says "current step") a forward button whose label
-    doesn't name a card ("Verify again") is still refused, even before any card field shows."""
-    verify_step = ("TutorQ K-12 Your account, done Confirm your email, done Your kids, done "
-                   "Verify you are the parent, current step Verify again Email me the link instead Not now")
-    assert hazard("Verify again", context=verify_step)
-    assert hazard("Continue", context="Verify you are the parent")
-    assert not hazard("Continue", context="Verify you are the parent, done Your family")
+def test_no_products_step_name_is_written_into_the_rules():
+    """A card check that shows no card field yet ("Verify again") is judged from the screen (test_login_money.py)."""
+    assert not guards.MONEY_PAGE.search("Verify you are the parent, current step")
 
 
 class FakeBrowser:
