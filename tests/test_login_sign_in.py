@@ -155,3 +155,13 @@ def test_a_secret_never_goes_through_act_even_beside_a_plain_field_with_its_labe
                                    if s.path == "/signin" else [])
     sign_in(s, ORIGIN, FORM, dict(GOOD), log=lambda m: None)
     assert all(text != GOOD["password"] for _, _, text in s.acts) and s.secret_typed == [GOOD["password"]]
+
+
+def test_a_plain_secret_field_is_filled_where_it_is_and_the_password_only_into_the_password_input():
+    s = Site()
+    form = {**FORM, "fields": FORM["fields"] + [{"name": "pin", "label": "PIN", "secret": True, "password_input": False}]}
+    real = s.elements
+    s.elements = lambda: real() + ([{"node": 8, "role": "textbox", "label": "PIN", "actions": {"fill": {}}}]
+                                   if s.path == "/signin" else [])
+    sign_in(s, ORIGIN, form, {**GOOD, "pin": "4321"}, log=lambda m: None)
+    assert ("PIN", "fill", "4321") in s.acts and s.secret_typed == [GOOD["password"]]

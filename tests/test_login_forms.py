@@ -88,21 +88,22 @@ def test_no_check_model_offers_nothing():
 
 def test_password_fields_are_secret():
     by_title = {f["title"]: f for f in offered()}
-    assert by_title["Welcome back."]["fields"] == [{"name": "email", "label": "Email", "secret": False},
-                                                   {"name": "password", "label": "Password", "secret": True}]
+    assert by_title["Welcome back."]["fields"] == [
+        {"name": "email", "label": "Email", "secret": False, "password_input": False},
+        {"name": "password", "label": "Password", "secret": True, "password_input": True}]
     assert by_title["Sign in to your subjects"]["fields"] == [
-        {"name": "your-login-id", "label": "Your login ID", "secret": False},
-        {"name": "passcode", "label": "Passcode", "secret": True}]
+        {"name": "your-login-id", "label": "Your login ID", "secret": False, "password_input": False},
+        {"name": "passcode", "label": "Passcode", "secret": True, "password_input": True}]
     assert [f["id"] for f in offered()] == ["f1", "f2"]
 
 
-def test_only_password_inputs_are_secret():
-    """Security review: a plain input labelled like a secret ("PIN", "Zip code") is a plain field; only a password
-    input is secret, so a secret only ever goes where a password input has focus."""
+def test_a_plain_secret_field_is_collected_hidden_but_filled_where_it_is():
+    """Security review: a plain input labelled like a secret ("PIN") is asked for hidden (secret), but only a real
+    password input takes the focus-checked secret path (password_input)."""
     PAGES["/setup/pin"] = (["TutorQ K-12", "Enter your PIN please"], ["PIN"], ["Password"], 0.95)
     INDEX["/setup/pin"] = {"sign_in": True, "examples": ["/setup/pin"]}
     try:
         pin = next(f for f in offered() if f["page"] == "/setup/pin")
-        assert pin["fields"][0] == {"name": "pin", "label": "PIN", "secret": False}
+        assert pin["fields"][0] == {"name": "pin", "label": "PIN", "secret": True, "password_input": False}
     finally:
         del PAGES["/setup/pin"], INDEX["/setup/pin"]

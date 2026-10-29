@@ -9,6 +9,7 @@ import base64
 import re
 
 from ..cloudflare import sees_images
+from .ask import secret_field
 
 SIGNS_IN_CONFIDENT = 0.8
 QUESTION = ("Is this a form for signing in to an account that already exists (not for creating a new account, and not "
@@ -75,9 +76,10 @@ def sign_in_forms(s, origin, index, cf, log=print):
         if not _signs_in(cf, page, plain + secret, buttons, shot):
             continue
         lines = [t.strip() for t in (page.get("text") or "").split("\n") if t.strip()]
-        # only a password input is secret: a secret is typed only where one has focus, never through act
-        fields = [{"name": _slug(l), "label": l, "secret": False} for l in plain] + \
-                 [{"name": _slug(l), "label": l, "secret": True} for l in secret]
+        # secret: asked for hidden (getpass; masked by a host). password_input: typed only where a password input
+        # has focus, never through act. A plain "PIN" field is the first but not the second.
+        fields = [{"name": _slug(l), "label": l, "secret": secret_field(l), "password_input": False} for l in plain] + \
+                 [{"name": _slug(l), "label": l, "secret": True, "password_input": True} for l in secret]
         seen.append({"page": path, "lines": lines, "controls": {_first_line(e["label"]) for e in els},
                      "fields": fields})
     shared = set.intersection(*(set(f["lines"]) for f in seen)) if len(seen) > 1 else set()

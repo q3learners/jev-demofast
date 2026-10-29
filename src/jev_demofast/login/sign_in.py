@@ -54,7 +54,7 @@ def _type_secret(s, label, value):
 
 def _fill(s, fields, values):
     for field in fields:
-        if field["secret"]:  # a password input: never observed, never through act, typed only where it has focus
+        if field.get("password_input", field["secret"]):  # never observed, never through act, typed only where focused
             if not _type_secret(s, field["label"], values[field["name"]]):
                 return f"no field for {field['label']}"
             continue
