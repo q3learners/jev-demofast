@@ -107,3 +107,18 @@ def test_i5_the_accounts_email_never_reaches_the_map_or_a_prompt():
     forms.handle(app, Watch(), m, key, screen, "set up", Budget(), log=lambda m: None, now="t2")
     assert "parent@demo.test" in app.typed
     assert "parent@demo.test" not in json.dumps(m) and not any("parent@demo.test" in p for p in prompts)
+
+
+def test_a_dialog_from_a_plain_click_is_only_ever_dismissed():
+    """Security review: "Archive" opens "Archive Ava? Yes / Cancel"; confirming would change an existing kid."""
+    from test_behaviour_forms import Model as FormModel
+
+    class SaysYes(FormModel):
+        def choose(self, instructions, options, state, allow_none=False):
+            labels = {v: k for k, v in options.items()}
+            if instructions == forms.DIALOG_Q and "Yes" in labels:
+                return labels["Yes"], 0.9
+            return super().choose(instructions, options, state, allow_none)
+    app = FakeApp(archive=True, tips=True)
+    walk(app, SaysYes())
+    assert "Yes" not in app.pressed and "Ava" in app.kids and "Got it" in app.pressed

@@ -26,6 +26,9 @@ FINISH_TRUE, FINISH_FALSE = ("yes: it finishes or leaves a one-time setup step",
                              "no: it adds or moves within something that can be done again")
 ONE_TIME = 0.5  # at or above: not pressed; a model error counts as finishing
 EMAIL = re.compile(r"e-?mail", re.I)
+# What dismisses a dialog without committing to anything. A dialog mapping didn't open with an add ("Archive Ava?
+# Yes / Cancel") is only ever dismissed: confirming would change something that was already there.
+DISMISS = re.compile(r"^\s*(got it|close|dismiss|cancel|not now|no thanks|skip|later|back|maybe later)\s*$", re.I)
 OWN_EMAIL = "(the account's email)"  # what the map records for it: the email itself never reaches a file or a prompt
 
 
@@ -67,11 +70,12 @@ def _escape(s):
         s.browser.call("Input.dispatchKeyEvent", type=kind, key="Escape", code="Escape", windowsVirtualKeyCode=27)
 
 
-def _dialog(s, cf, m, key, now, chain, from_our_form):
+def _dialog(s, cf, m, key, now, chain, from_our_form, dismiss_only=False):
     """The dialog's button to press, or None (closed, nothing pressed). A change label ("Save changes") is allowed
     only when the dialog came from a form this walk filled."""
     buttons = [e for e in in_dialog(s, s.elements()) if "click" in e["actions"]]
-    allowed = [e for e in buttons if may_press(e, filled_here=from_our_form)]
+    allowed = [e for e in buttons if may_press(e, filled_here=from_our_form)
+               and (not dismiss_only or DISMISS.search(_label(e)))]
     pick = None
     if allowed:
         try:
@@ -91,7 +95,7 @@ def _dialog(s, cf, m, key, now, chain, from_our_form):
     return pick
 
 
-def handle(s, cf, m, key, screen, account, budget, log, now, section=None):
+def handle(s, cf, m, key, screen, account, budget, log, now, section=None, dismiss_only=False):
     """Walk the form, dialog or wizard on screen. Returns the indexes of the actions it recorded, also kept as one
     chain in m["chains"] (the jobs are made from chains)."""
     chain, filled, typed, steps = [], set(), [], 0
@@ -102,7 +106,8 @@ def handle(s, cf, m, key, screen, account, budget, log, now, section=None):
             steps += 1
             before = s.page.get("text", "")
             if screen["kind"] == "dialog":
-                e = _dialog(s, cf, m, key, now, chain, from_our_form=bool(filled))
+                e = _dialog(s, cf, m, key, now, chain, from_our_form=bool(filled),
+                            dismiss_only=dismiss_only and not filled)
                 if e is None:
                     return chain
             else:

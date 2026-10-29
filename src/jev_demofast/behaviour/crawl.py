@@ -203,7 +203,7 @@ def _walk_section(w, section, start_key):
             if after["kind"] == "dialog":  # answered like any dialog, then back; a dialog is never queued
                 add_screen(w.m, after_key, {**after, "section": section}, w.now)
                 forms.handle(w.s, w.cf, w.m, after_key, after, w.m["account"]["state"], w.budget, w.log, w.now,
-                             section)
+                             section, dismiss_only=not ADDS.search(label))  # only an add's dialog is carried on
                 if not _back_to(w, section, url, key):
                     w.m["left"].append(f"{section}: way back lost")
                     return
