@@ -5,7 +5,7 @@ from urllib.parse import urljoin, urlparse
 from ..browser.cdp import Browser, StalePage, fingerprint
 from ..browser.elements import observed
 
-__all__ = ["Session", "StalePage", "fingerprint", "origin", "site_cookies"]
+__all__ = ["Session", "StalePage", "address", "fingerprint", "origin", "site_cookies"]
 
 # After an action, instead of a fixed pause: a page that doesn't react within IDLE_S is taken as unchanged (what the
 # old 0.4 s pause assumed); one that does is read once its DOM has been quiet for QUIET_S. MAX_S caps pages that never
@@ -20,12 +20,27 @@ WATCH_STATE = """(() => { const w = window.__jdfWatch; if (!w) return null; cons
   return {since_start: now - w.start, since_last: w.last === null ? null : now - w.last}; })()"""
 NEXT_FRAME = """new Promise(done => { setTimeout(done, 100);
   requestAnimationFrame(() => requestAnimationFrame(done)); })"""
+# Flutter draws on its own surface: k12.tutorq.ai had no text and no controls to read until its accessibility layer
+# was on. Clicking the layer's placeholder from JavaScript turns it on (about 1.5 s there); a reload turns it off.
+# The view is drawn after the load (complete at 0.92 s, flutter-view at 1.35 s): at load, only the loader is there.
+FLUTTER_JS = "!!(window._flutter || document.querySelector('flutter-view, flt-glass-pane'))"
+ENABLE_FLUTTER_JS = "(() => { const p = document.querySelector('flt-semantics-placeholder'); p?.click(); return !!p; })()"
+SEMANTICS_READY_JS = "document.querySelectorAll('flt-semantics').length > 0"
+FLUTTER_WAIT_S, FLUTTER_POLL_S = 6.0, 0.1
 
 
 def origin(url):
     """scheme://host[:port]: storage belongs to an origin, so the port matters (localhost:3000)."""
     u = urlparse(url)
     return f"{u.scheme}://{u.netloc.rsplit('@', 1)[-1]}"
+
+
+def address(url):
+    """Path and query; with Flutter's default hash routing (/#/setup/who), the route in the fragment too. A page found
+    through a button is known by this, since ?mode=signin and ?mode=signup are different K-12 screens."""
+    u = urlparse(url)
+    route = f"#{u.fragment}" if u.fragment.startswith("/") else ""
+    return (u.path or "/") + (f"?{u.query}" if u.query else "") + route
 
 
 def site_cookies(cookies, host):
@@ -42,6 +57,8 @@ class Session:
         self.start_url = url
         self.host = urlparse(url).hostname
         self.browser = Browser(url, isolated=isolated)
+        self.is_flutter = False
+        self.flutter_ready()
         if fresh:  # start logged out: clear this site's cookies and storage (isolated profile only)
             self.clear_site(url)
             self.browser.call("Page.navigate", url=url)
@@ -63,10 +80,31 @@ class Session:
         while time.monotonic() < deadline:
             try:
                 if self.browser.evaluate("document.readyState") == "complete":
+                    self.flutter_ready()
                     return
             except StalePage:
                 pass
             time.sleep(0.05)
+
+    def flutter_ready(self, timeout=FLUTTER_WAIT_S):
+        """On a Flutter page, turn its accessibility layer on and wait for it. True once it's on; False for any other
+        page (one check, nothing else) or if the layer never appeared."""
+        try:
+            self.is_flutter = self.browser.evaluate(FLUTTER_JS) is True
+        except (StalePage, RuntimeError):
+            return False
+        if not self.is_flutter:
+            return False
+        deadline, clicked = time.monotonic() + timeout, False
+        while time.monotonic() < deadline:
+            try:
+                clicked = clicked or self.browser.evaluate(ENABLE_FLUTTER_JS) is True  # once its placeholder exists
+                if clicked and self.browser.evaluate(SEMANTICS_READY_JS) is True:
+                    return True
+            except (StalePage, RuntimeError):
+                pass
+            time.sleep(FLUTTER_POLL_S)
+        return False
 
     def observe(self):
         self.page = self.browser.observe(screenshot=False)

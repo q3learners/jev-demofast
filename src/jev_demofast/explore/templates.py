@@ -9,11 +9,12 @@ def _segments(path):
     return [p for p in urlparse(path).path.split("/") if p]
 
 
-def templates(paths):
+def templates(paths, keep=frozenset()):
     """{path: route}. Paths with the same number of segments that differ in one position, with at least two values
-    there, share a route with that segment as :handle. Query strings and trailing slashes are ignored."""
-    segs = {p: _segments(p) for p in paths}
-    routes = {}
+    there, share a route with that segment as :handle. Query strings and trailing slashes are ignored. A path in `keep`
+    (found through a button) is its own route, query included, and doesn't count toward others' grouping."""
+    routes = {p: p for p in paths if p in keep}
+    segs = {p: _segments(p) for p in paths if p not in keep}
     for p, parts in segs.items():
         best, best_count = None, 1
         for k in range(len(parts) if len(parts) >= 2 else 0):  # /men and /about aren't one template

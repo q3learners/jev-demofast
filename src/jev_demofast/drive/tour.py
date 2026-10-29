@@ -13,7 +13,7 @@ from .guards import DryRunStop, on_site
 from .jev_drive import click_on_camera, drive_goal
 from .menus import LEFT_SITE
 from .popups import clear_popups, covered, first_screen
-from .session import Session, origin
+from .session import Session, address, origin
 from .showcase import showcase
 
 # A page is shown with glides a viewer can follow: a jump between two stills read as a cut, never as a scroll.
@@ -54,7 +54,7 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
             rec.snap(1.5)
         rec.commit({"do": "open", "shot": 0, "show": shots[0]["show"]}, s.observe())
         landed = urlparse(s.page["url"]).hostname  # "allbirds.com" as typed lands on www.allbirds.com
-        known = offerable(index)
+        known, buttons = offerable(index), button_labels(index)
         if len(shots) == 1:
             _show_down(s, rec, shots[0]["show"])
         else:
@@ -68,7 +68,8 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
                 for action in rec.actions[before:]:
                     action.update(shot=i, show=shot["show"])
                 continue
-            problem = _reach(s, rec, shot["page"], i, shot["show"], landed, known.get(shot["page"], []))
+            problem = _reach(s, rec, shot["page"], i, shot["show"], landed, known.get(shot["page"], []),
+                             buttons.get(shot["page"], {}))
             if problem:
                 rec.discard()
                 result["skipped"].append(shot["page"])
@@ -108,19 +109,52 @@ def arrived(page_now, page, host, landed, texts):
     url = page_now["url"]
     if not on_site(url, host):
         return False
-    if urlparse(url).hostname == landed and _path(url) == _path(page):
+    if urlparse(url).hostname == landed and same_page(url, page):
         return True
     screen = " ".join((page_now.get("text") or "").split())
     return any(" ".join(t.split()) in screen for t in texts if t)
 
 
-def _reach(s, rec, page, i, show, landed, texts):
-    """Go to the shot's page on camera. Returns why it couldn't, or None once there."""
-    if _path(s.page["url"]) == _path(page) and urlparse(s.page["url"]).hostname == landed:
+def button_labels(index):
+    """{page: {page it was found on: [label, ...]}}: the buttons the explorer found leading to each page (a Flutter
+    app has no href links). A label counts only where it was found: K-12's "Sign in" navigates on its who page and
+    submits on its kid page."""
+    found = {}
+    for route, entry in index.items():
+        if route.startswith("_"):
+            continue
+        for link in entry.get("links") or []:
+            if link.get("via") != "button":
+                continue
+            for source in entry.get("examples") or [route]:
+                labels = found.setdefault(link["to"], {}).setdefault(source, [])
+                if link["label"] not in labels:
+                    labels.append(link["label"])
+    return found
+
+
+def same_page(url, page):
+    """`url` shows `page`: by path, or for a page known by its query or hash route (found through a button), by both."""
+    if "?" in page or "#/" in page:
+        return address(url).rstrip("/") == page.rstrip("/")
+    return _path(url) == _path(page)
+
+
+def _first_line(label):
+    return (label or "").strip().split("\n")[0].strip()
+
+
+def _reach(s, rec, page, i, show, landed, texts, found_on=None):
+    """Go to the shot's page on camera. Returns why it couldn't, or None once there. `found_on`: {page: [labels]} of
+    the buttons that lead there, by the page they were found on."""
+    if same_page(s.page["url"], page) and urlparse(s.page["url"]).hostname == landed:
         return None
+    labels = (found_on or {}).get(address(s.page["url"]), [])
     _to_top(s)  # the navigation is at the top, where a person would scroll back to
     action = {"shot": i, "show": show}
     link = next((e for e in s.elements() if "click" in e["actions"] and _leads_to(s, e, page, landed)), None)
+    if link is None and labels:  # no href leads there: the button the map found leading there, clicked on camera
+        link = next((e for e in s.elements() if "click" in e["actions"] and _first_line(e["label"]) in labels), None)
     try:
         if link:
             got = click_on_camera(s, rec, link, {"do": "click", "target": link["label"], **action})
@@ -153,7 +187,7 @@ def _to_top(s):
 
 def _leads_to(s, e, page, landed):
     href = s.href(e["node"])
-    return bool(href) and urlparse(href).hostname == landed and _path(href) == _path(page)
+    return bool(href) and urlparse(href).hostname == landed and same_page(href, page)
 
 
 def scroll_by(fraction):
