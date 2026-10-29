@@ -1,4 +1,4 @@
-"""Is this a step that takes money or verifies the parent? Judged from the screen by Clef before a forward click in a
+"""Is this a step that takes money or verifies the parent? Judged from the screen by Clef before every click in a
 logged-in run, so no product's wording is written into the rules. Measured 29 October (3 runs each, the same score every
 run): K-12's card check 0.98, its "Verify again" page 0.97, a generic checkout 0.99; K-12's kids page 0.07, a kid's
 login 0.11, subjects 0.03, a workspace setup 0.01. Unsure, or the model is down: the demo stops there."""
@@ -12,19 +12,22 @@ TRUE, FALSE = ("yes: a payment, billing or verification step",
 
 
 def judge(cf):
-    """money_step(s) -> True when the screen s is on takes money or verifies; one question per screen."""
-    seen = {}
+    """money_step(s) -> True when the screen s is on takes money or verifies. A "yes" is remembered for that screen; a
+    "no" never is: a card form in an iframe or a canvas can appear without changing the page's text."""
+    refused = set()
 
     def money_step(s):
         page = s.page or {}
         key = (page.get("url"), page.get("text"))
-        if key not in seen:
-            state = {"url": page.get("url"), "visible_text": " ".join((page.get("text") or "").split())[:1500]}
-            try:
-                shot = base64.b64decode(s.browser.call("Page.captureScreenshot", format="jpeg", quality=80)["data"])
-                seen[key] = cf.yes(QUESTION, state, true=TRUE, false=FALSE, model=cf.s.check_model,
-                                   images=[shot]) >= MONEY_STEP
-            except Exception:  # can't tell: a missed shot is cheaper than a charge
-                return True
-        return seen[key]
+        if key in refused:
+            return True
+        state = {"url": page.get("url"), "visible_text": " ".join((page.get("text") or "").split())[:1500]}
+        try:
+            shot = base64.b64decode(s.browser.call("Page.captureScreenshot", format="jpeg", quality=80)["data"])
+            if cf.yes(QUESTION, state, true=TRUE, false=FALSE, model=cf.s.check_model, images=[shot]) < MONEY_STEP:
+                return False
+        except Exception:  # can't tell: a missed shot is cheaper than a charge
+            return True
+        refused.add(key)
+        return True
     return money_step
