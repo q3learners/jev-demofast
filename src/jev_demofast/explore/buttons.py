@@ -8,10 +8,12 @@ no <form> to tell its submit button from a navigation button, so Clef decides fr
 that can't see images means no click: a miss costs a link, a wrong pass an (empty) form sent.
 """
 import base64
+import time
 from urllib.parse import urlparse
 
 from ..cloudflare import sees_images
-from ..drive.guards import CHANGES, blocked, on_site
+from ..drive.guards import CHANGES, TOGGLES, blocked, on_site
+from ..drive.session import address
 
 NAVIGATES_CONFIDENT = 0.8
 QUESTION = ("A visitor is on this page and has typed nothing into its fields. Does clicking the button named in "
@@ -27,9 +29,12 @@ def _first_line(label):
     return (label or "").strip().split("\n")[0].strip()
 
 
-def _address(url):
-    u = urlparse(url)
-    return (u.path or "/") + (f"?{u.query}" if u.query else "")
+# A field is anything a form sends: text, a dropdown, a checkbox, radio or switch (a step with a dropdown and
+# "Continue" is a form, though it has nothing to type into).
+FIELD_ROLES = {"textbox", "searchbox", "combobox", "spinbutton"} | TOGGLES
+
+
+_address = address
 
 
 def only_navigates(cf, label, page, fields, buttons, screenshot):
@@ -45,12 +50,14 @@ def only_navigates(cf, label, page, fields, buttons, screenshot):
     return score >= NAVIGATES_CONFIDENT
 
 
-def discover(s, origin, path, cf, log=print):
+def discover(s, origin, path, cf, log=print, deadline=None):
     """Links found by clicking the safe buttons of the page at `path`: [{"label", "to", "via": "button"}]. The session
-    is back on the page when this returns."""
+    is back on the page when this returns, unless the way back failed (then discovery stops there, keeping what it
+    found). `deadline` (time.monotonic()) stops it between buttons."""
     host = urlparse(origin).hostname
     els = s.elements()
-    fields = [_first_line(e["label"]) for e in els if "fill" in e["actions"]]
+    fields = [_first_line(e["label"]) for e in els
+              if "fill" in e["actions"] or "select" in e["actions"] or e["role"] in FIELD_ROLES]
     has_fields = bool(fields) or s.browser.evaluate(SIGN_IN_FORM_JS) is True
     labels = list(dict.fromkeys(_first_line(e["label"]) for e in els
                                 if e["role"] == "button" and "click" in e["actions"] and _first_line(e["label"])))
@@ -62,6 +69,9 @@ def discover(s, origin, path, cf, log=print):
         return shot[0]
 
     for label in labels:
+        if deadline is not None and time.monotonic() >= deadline:
+            log(f"  buttons on {path}: out of time")
+            break
         if blocked(label) or CHANGES.search(label):
             continue
         if has_fields and not only_navigates(cf, label, page, fields, labels, screenshot):
@@ -79,7 +89,11 @@ def discover(s, origin, path, cf, log=print):
         if landed and on_site(landed, host) and _address(landed) != path:
             links.append({"label": label, "to": _address(landed), "via": "button"})
             log(f"  button {label!r} → {_address(landed)}")
-        s.browser.call("Page.navigate", url=origin + path)  # back for the next button: Flutter's history isn't ours
-        s.wait_loaded()
-        s.observe()
+        try:
+            s.browser.call("Page.navigate", url=origin + path)  # back for the next button: Flutter's history isn't ours
+            s.wait_loaded()
+            s.observe()
+        except Exception as err:  # the page won't come back: keep what was found, try no more buttons here
+            log(f"  buttons on {path}: couldn't return ({err})")
+            break
     return links

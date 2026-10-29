@@ -118,7 +118,8 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
             page = _read_page(s)
             visited.append(path)
             if getattr(s, "is_flutter", False) and time.monotonic() - started < max_minutes * 60:
-                found_links = discover(s, origin, path, cf, log)  # Flutter navigates with buttons, not links
+                found_links = discover(s, origin, path, cf, log,  # Flutter navigates with buttons, not links
+                                       deadline=started + max_minutes * 60)
                 button_paths.update(link["to"] for link in found_links)
                 page["links"] += [link for link in found_links if link not in page["links"]]
             for link in page["links"]:

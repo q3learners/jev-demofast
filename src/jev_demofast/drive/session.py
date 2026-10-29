@@ -5,7 +5,7 @@ from urllib.parse import urljoin, urlparse
 from ..browser.cdp import Browser, StalePage, fingerprint
 from ..browser.elements import observed
 
-__all__ = ["Session", "StalePage", "fingerprint", "origin", "site_cookies"]
+__all__ = ["Session", "StalePage", "address", "fingerprint", "origin", "site_cookies"]
 
 # After an action, instead of a fixed pause: a page that doesn't react within IDLE_S is taken as unchanged (what the
 # old 0.4 s pause assumed); one that does is read once its DOM has been quiet for QUIET_S. MAX_S caps pages that never
@@ -33,6 +33,14 @@ def origin(url):
     """scheme://host[:port]: storage belongs to an origin, so the port matters (localhost:3000)."""
     u = urlparse(url)
     return f"{u.scheme}://{u.netloc.rsplit('@', 1)[-1]}"
+
+
+def address(url):
+    """Path and query; with Flutter's default hash routing (/#/setup/who), the route in the fragment too. A page found
+    through a button is known by this, since ?mode=signin and ?mode=signup are different K-12 screens."""
+    u = urlparse(url)
+    route = f"#{u.fragment}" if u.fragment.startswith("/") else ""
+    return (u.path or "/") + (f"?{u.query}" if u.query else "") + route
 
 
 def site_cookies(cookies, host):

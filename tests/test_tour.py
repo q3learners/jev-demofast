@@ -288,7 +288,27 @@ def test_without_a_matching_button_the_tour_still_cuts():
     assert actions[-1]["do"] == "go" and result["verified"] is True
 
 
-def test_button_labels_come_from_the_maps_button_links():
-    index = {"/": {"links": [{"label": "Go", "to": "/a"}, {"label": "I'm a student", "to": "/student", "via": "button"}]},
-             "/x": {"links": [{"label": "Back", "to": "/student", "via": "button"}]}, "_site": {}}
-    assert tour.button_labels(index) == {"/student": ["I'm a student", "Back"]}
+def test_button_labels_come_from_the_maps_button_links_and_the_page_they_were_found_on():
+    index = {"/": {"examples": ["/"], "links": [{"label": "Go", "to": "/a"},
+                                                {"label": "I'm a student", "to": "/student", "via": "button"}]},
+             "/x": {"examples": ["/x"], "links": [{"label": "Back", "to": "/student", "via": "button"}]}, "_site": {}}
+    assert tour.button_labels(index) == {"/student": {"/": ["I'm a student"], "/x": ["Back"]}}
+
+
+def test_a_button_found_on_another_page_is_never_clicked_here():
+    """Review: "Sign in" navigates on K-12's who page but submits on its kid page. A label is only trusted on the page
+    the explorer found it on."""
+    index = {**MAP, "/x": {"kind": "page", "examples": ["/x"], "texts": ["x"],
+                           "links": [{"label": "I'm a student", "to": "/student", "via": "button"}]}}
+    recs = []
+    tour.run(Cf(), "https://tutorq.test/", [HOME, {"page": "/student", "show": "the way in"}], index,
+             log=lambda m: None, session=fake_session(), recorder=lambda out, s, blur_typed=True: recs.append(FakeRecorder(out, s)) or recs[-1])
+    assert recs[0].actions[-1]["do"] == "go"  # a cut, not a click on the same-looking button of "/"
+
+
+def test_pages_that_differ_only_in_query_or_hash_are_different_pages():
+    """?mode=signin and ?mode=signup are different K-12 screens; /#/a and /#/b are different hash-routed pages."""
+    assert not tour.same_page("https://k12.test/setup/account?mode=signin", "/setup/account?mode=signup")
+    assert tour.same_page("https://k12.test/setup/account?mode=signup", "/setup/account?mode=signup")
+    assert not tour.same_page("https://k12.test/#/a", "/#/b") and tour.same_page("https://k12.test/#/b", "/#/b")
+    assert tour.same_page("https://shop.test/pages/about/?utm=x", "/pages/about")  # a link-found page: path only

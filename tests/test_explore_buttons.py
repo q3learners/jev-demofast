@@ -151,3 +151,45 @@ def test_ends_on_the_page_it_started_from():
 def test_only_navigates_needs_images():
     cf = FakeClef({"Back": 0.98}, check_model="@cf/jev/jev-small")
     assert only_navigates(cf, "Back", {"url": ORIGIN, "text": ""}, ["Email"], ["Back"], lambda: b"x") is False
+
+
+def test_a_page_with_a_dropdown_or_checkbox_counts_as_a_form():
+    """Review: only text and password fields counted, so a step with a dropdown and "Continue" skipped Clef."""
+    SITE["/step"] = (False, {"Continue": "/done"})
+    try:
+        for extra in ({"node": 50, "role": "combobox", "label": "Grade", "actions": {"select": {}}},
+                      {"node": 51, "role": "checkbox", "label": "I agree", "actions": {"click": {}}}):
+            s = FakeSession("/step")
+            s._els.append(extra)
+            s.observe = lambda s=s, extra=extra: s.page  # keep the extra element
+            assert discover(s, ORIGIN, "/step", None, log=lambda m: None) == [] and s.clicked == []
+    finally:
+        del SITE["/step"]
+
+
+def test_a_return_that_fails_stops_discovery_but_keeps_what_it_found():
+    """Review: a timeout on the way back escaped discover() and, on the home page, failed the whole explore."""
+    s = FakeSession("/setup/who")
+    real = s.browser.call
+
+    class B:
+        evaluate = staticmethod(s.browser.evaluate)
+
+        def call(self, method, **params):
+            if method == "Page.navigate" and s.clicked:
+                raise TimeoutError("Page.navigate timed out after 30s")
+            return real(method, **params)
+    s.browser = B()
+    links = discover(s, ORIGIN, "/setup/who", None, log=lambda m: None)
+    assert len(s.clicked) == 1 and len(links) == 1
+
+
+def test_discovery_stops_at_its_deadline():
+    s = FakeSession("/setup/who")
+    assert discover(s, ORIGIN, "/setup/who", None, log=lambda m: None, deadline=0) == [] and s.clicked == []
+
+
+def test_a_hash_routed_app_keeps_its_route():
+    """Flutter's default routing is /#/route: without the fragment every page was "/" and nothing was found."""
+    assert buttons._address("https://k12.test/#/setup/student") == "/#/setup/student"
+    assert buttons._address("https://k12.test/setup/account?mode=signin#top") == "/setup/account?mode=signin"
