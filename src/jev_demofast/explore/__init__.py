@@ -6,12 +6,11 @@ the pages behind a login (behind_login), which aren't mapped.
 Exploring only navigates, opens menus and reads; it never submits, signs up or types into a pop-up.
 """
 import json
-import re
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-from ..drive.guards import blocked, hazard, on_site
+from ..drive.guards import HazardStop, blocked, may_open, on_site
 from ..drive.popups import bot_check, clear_popups
 from ..drive.session import Session, StalePage
 from . import menus
@@ -69,14 +68,18 @@ def _read_page(s):
 
 
 def _logged_in_hazard(s, link):
-    """In a logged-in run (--login) a link is opened by its address, which never passes Session.act's check: its
-    label and its path ("/account/logout", "/kids/3/delete") are checked here instead."""
-    if not getattr(s, "hazards", False):
-        return False
-    u = urlparse(link["to"])
-    words = re.sub(r"([a-z])([A-Z])", r"\1 \2", f"{u.path} {u.query}")  # /account/deleteKid, ?action=destroy
-    words = re.sub(r"[^a-zA-Z]+", " ", words)
-    return hazard(link.get("label") or "") or hazard(words)
+    """In a logged-in run (--login) a link or menu item is opened by its address, which never passes Session.act's
+    check: guards.may_open checks its label and address instead."""
+    return getattr(s, "hazards", False) and not may_open(link.get("label"), link["to"])
+
+
+def _clear_popups(cf, s, log):
+    """clear_popups, but a pop-up whose only closer a logged-in run never clicks is left, not fatal."""
+    try:
+        return clear_popups(cf, s, log)
+    except HazardStop as stop:
+        log(f"  pop-up left open: its closer {str(stop)!r} is a step a logged-in run never takes")
+        return None
 
 
 def _sent_to_sign_in(s, asked):
@@ -124,7 +127,7 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
 
         def visit(path):
             _wait_for_content(s)
-            how = clear_popups(cf, s, log)
+            how = _clear_popups(cf, s, log)
             if how:
                 site["popups"].append({"seen_on": path, "cleared_by": how})
             page = _read_page(s)
@@ -143,12 +146,13 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
         pages = {home: visit(home)}
         time.sleep(FIRST_PAGE_SETTLE_S)
         s.observe()
-        how = clear_popups(cf, s, log)  # a pop-up that arrived late would hide the navigation
+        how = _clear_popups(cf, s, log)  # a pop-up that arrived late would hide the navigation
         if how:
             site["popups"].append({"seen_on": home, "cleared_by": how})
         # A Flutter app has no links to reveal, and its top-bar buttons navigate: its pages come from discover()
         site["menus"] = [] if getattr(s, "is_flutter", False) else discover_menus(s, log)
-        menu_paths = [i["to"] for m in site["menus"] for i in m["items"]]
+        menu_paths = [i["to"] for m in site["menus"] for i in m["items"]
+                      if not blocked(i["label"]) and not _logged_in_hazard(s, i)]
         queue[:0] = [p for p in dict.fromkeys(menu_paths) if p not in queue]  # menu destinations first
         while queue and len(visited) < max_pages and time.monotonic() - started < max_minutes * 60:
             routes = templates(list(dict.fromkeys([home] + queue + visited)), keep=frozenset(button_paths))

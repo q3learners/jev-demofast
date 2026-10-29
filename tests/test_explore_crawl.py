@@ -496,3 +496,31 @@ def test_a_logged_in_explore_never_opens_a_hazard_link(monkeypatch):
     session2, visited2 = fake_session(pages)  # not logged in: today's behaviour (only blocked labels are skipped)
     explore("https://shop.test/", cf=None, log=lambda x: None, session=session2)
     assert "/billing" in visited2
+
+
+def test_a_logged_in_explore_never_opens_a_hazard_menu_item(monkeypatch):
+    """Review: menu destinations were queued with no check; an account menu's "Log out" (a GET /logout) would log the
+    explore session out."""
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    pages = site_pages()
+    pages["/logout"] = pages["/profile"] = {"title": "x", "text": "x", "links": [], "actions": [], "headings": ["x"]}
+    monkeypatch.setattr(explore_mod, "discover_menus", lambda s, log: [{"opener": "Venkat", "opens_on": "click", "items": [
+        {"label": "Log out", "to": "/logout"}, {"label": "Profile", "to": "/profile"}]}])
+    session, visited = fake_session(pages)
+
+    class LoggedIn(session):
+        hazards = True
+    explore("https://shop.test/", cf=None, log=lambda x: None, session=LoggedIn)
+    assert "/logout" not in visited and "/profile" in visited
+
+
+def test_a_hazard_popup_doesnt_stop_a_logged_in_explore(monkeypatch):
+    """Review: a pop-up whose only closer is a hazard raised HazardStop out of explore()."""
+    from jev_demofast.drive.guards import HazardStop
+    monkeypatch.setattr(explore_mod.menus.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
+    monkeypatch.setattr(explore_mod, "clear_popups", lambda cf, s, log: (_ for _ in ()).throw(HazardStop("Subscribe")))
+    session, _ = fake_session(site_pages())
+    m = explore("https://shop.test/", cf=None, log=lambda x: None, session=session)
+    assert "/pages/about" in m

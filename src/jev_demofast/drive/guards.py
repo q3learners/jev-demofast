@@ -33,6 +33,17 @@ MONEY_PAGE = re.compile(r"card number|\bcvc\b|\bcvv\b|payment details|verify you
 FORWARD = re.compile(r"\b(continue|next|submit|confirm|done|finish|save|verify|start)\b", re.I)
 
 
+EMAIL_ADDRESS = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+
+
+def may_open(label, address):
+    """A logged-in run opens a page by its address only if neither its label nor its path and query is a hazard
+    ("/account/logout", "/account/deleteKid", "?action=destroy"): opening by address never passes Session.act."""
+    u = urlparse(address or "")
+    words = re.sub(r"[^a-zA-Z]+", " ", re.sub(r"([a-z])([A-Z])", r"\1 \2", f"{u.path} {u.query}"))
+    return not hazard(label or "") and not hazard(words)
+
+
 class HazardStop(Exception):
     """A logged-in run reached a step it never takes (the message is the refused label): the demo stops there."""
 

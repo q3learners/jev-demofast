@@ -125,3 +125,27 @@ def test_a_skip_runs_as_today(monkeypatch, tmp_path):
     monkeypatch.setattr(flow_mod, "prepare", lambda cf, a, index, log: prepared(sessions, ask=lambda q: None))
     cli.cmd_demo(args(tmp_path, login=True))
     assert ran[0].index == str(tmp_path / "public.json") and getattr(ran[0], "session", None) is None
+
+
+def test_a_code_asked_at_every_sign_in_is_asked_again():
+    """Review: each session is a new context (a new device to the site), and the code step had no one to ask."""
+    sessions = Sessions(after="/code")
+    codes = []
+
+    def ask(q):
+        if q["forms"][0]["fields"][0]["label"] == "Code":
+            codes.append(1)
+            return {"id": q["id"], "form": q["forms"][0]["id"], "values": {"code": "424242"}}
+        return {"id": q["id"], "form": "f1", "values": dict(GOOD)}
+    login = prepared(sessions, ask=ask)
+    s = login.session(ORIGIN + "/")
+    assert s.path == "/home" and len(codes) == 2
+
+
+def test_a_login_that_fails_while_mapping_stops_cleanly(monkeypatch, tmp_path):
+    ran = []
+    common(monkeypatch, tmp_path, ran)
+    monkeypatch.setattr(flow_mod, "with_login", lambda a, cf: (_ for _ in ()).throw(
+        RuntimeError("login: couldn't sign in for the recording")))
+    with pytest.raises(SystemExit, match="couldn't sign in"):
+        cli.cmd_demo(args(tmp_path, login=True))

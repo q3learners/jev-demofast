@@ -80,3 +80,12 @@ def test_the_log_line_never_contains_values(monkeypatch):
     line = json.dumps({"id": "q1", "form": "f1", "values": {"email": "parent@demo.test", "password": "pw-Zq81"}})
     ask_stdin(Q, stream=stdin_with(line + "\n"), log=said.append)
     assert not any("pw-Zq81" in m or "parent@demo.test" in m for m in said)
+
+
+def test_the_ask_line_is_flushed_for_a_host(monkeypatch):
+    """Review: under a pipe stdout is block-buffered; an unflushed ask: line never reaches the host."""
+    flushed = []
+    monkeypatch.setattr(ask.sys, "stdout", type("O", (), {"flush": lambda self: flushed.append(1), "write": lambda self, t: None})())
+    monkeypatch.setattr(ask, "_ready", lambda stream, timeout: False)
+    ask_stdin(Q, stream=stdin_with(""), log=lambda m: None)
+    assert flushed

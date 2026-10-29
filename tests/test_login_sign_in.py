@@ -145,3 +145,14 @@ def test_a_stuck_page_is_named_by_its_path_only():
     s = Site(after="/setup/verify?email=parent@demo.test&t=abc")
     result = sign_in(s, ORIGIN, FORM, dict(GOOD), log=lambda m: None)
     assert result == "stuck: /setup/verify"
+
+
+def test_a_plain_field_labelled_like_a_secret_is_filled_where_it_is():
+    """Review: "Zip code" or a non-password "Passcode" was routed to the first password input."""
+    s = Site()
+    form = {**FORM, "fields": FORM["fields"] + [{"name": "zip-code", "label": "Zip code", "secret": True}]}
+    real = s.elements
+    s.elements = lambda: real() + ([{"node": 7, "role": "textbox", "label": "Zip code", "actions": {"fill": {}}}]
+                                   if s.path == "/signin" else [])
+    sign_in(s, ORIGIN, form, {**GOOD, "zip-code": "22102"}, log=lambda m: None)
+    assert ("Zip code", "fill", "22102") in s.acts and s.secret_typed == [GOOD["password"]]

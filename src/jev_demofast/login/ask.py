@@ -61,6 +61,7 @@ def ask_stdin(q, stream=None, log=print, timeout=ASK_TIMEOUT_S):
     """Ask a host process: one `ask:` log line out, one JSON line in. Returns the answer, or None to skip."""
     stream = stream or sys.stdin
     log("ask: " + json.dumps(q))
+    sys.stdout.flush()  # under a host's pipe stdout is block-buffered: the question must reach it now
     if not _ready(stream, timeout):
         return None
     try:

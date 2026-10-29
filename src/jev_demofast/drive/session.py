@@ -5,7 +5,7 @@ from urllib.parse import urljoin, urlparse
 
 from ..browser.cdp import Browser, StalePage, fingerprint
 from ..browser.elements import observed
-from .guards import HazardStop, hazard
+from .guards import EMAIL_ADDRESS, HazardStop, hazard
 
 __all__ = ["Session", "StalePage", "address", "fingerprint", "origin", "site_cookies"]
 
@@ -129,8 +129,11 @@ class Session:
         label = f"{element.get('label', '')} {element.get('hint', '')}".strip()
         if kind != "fill" and hazard(label, context=(getattr(self, "page", None) or {}).get("text", "")):
             raise HazardStop(element.get("label", "")[:60])
-        if kind == "fill" and re.search(r"e-?mail", label, re.I) and (text or "") != (self.own_email or ""):
-            raise HazardStop(element.get("label", "")[:60])
+        if kind == "fill":  # an email field, or any address typed anywhere, must be the account's own
+            asks_email = re.search(r"e-?mail", label, re.I) and (text or "") != (self.own_email or "")
+            others = [m for m in EMAIL_ADDRESS.findall(text or "") if m.lower() != (self.own_email or "").lower()]
+            if asks_email or others:
+                raise HazardStop(element.get("label", "")[:60])
 
     def act(self, element, kind, text=None):
         element = self.refind(element)

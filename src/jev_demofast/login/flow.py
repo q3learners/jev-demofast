@@ -11,9 +11,9 @@ LOGGED_IN_MAP = "site-map-logged-in.json"  # in the run's work folder only: it h
 
 
 class Login:
-    def __init__(self, origin_, form, values, own_email, session_cls, log):
+    def __init__(self, origin_, form, values, own_email, session_cls, log, ask=None):
         self._origin, self._form, self._values = origin_, form, values
-        self._own_email, self._session_cls, self._log = own_email, session_cls, log
+        self._own_email, self._session_cls, self._log, self._ask = own_email, session_cls, log, ask
 
     @classmethod
     def prepare(cls, cf, url, index, ask, log=print, session=Session, find_forms=sign_in_forms):
@@ -40,7 +40,7 @@ class Login:
                 return None
             email = next((values[f["name"]] for f in form["fields"]
                           if not f["secret"] and "mail" in f["label"].lower()), None)
-            return cls(site, form, values, email, session, log)
+            return cls(site, form, values, email, session, log, ask=ask)
         finally:
             s.close()
 
@@ -48,14 +48,16 @@ class Login:
         """A new isolated session, signed in, with the logged-in hazards on. Raises if the sign-in fails: a demo is
         never recorded logged out while claiming to be logged in."""
         s = self._session_cls(url, isolated=True)
-        if self._values is None or sign_in(s, self._origin, self._form, self._values, log=self._log) != "signed in":
+        # a new context is a new device to the site: one that sends a code at every sign-in asks the founder again
+        if self._values is None or sign_in(s, self._origin, self._form, self._values, ask=self._ask,
+                                           log=self._log) != "signed in":
             s.close()
             raise RuntimeError("login: couldn't sign in for the recording")
         s.hazards, s.own_email = True, self._own_email
         return s
 
     def forget(self):
-        self._values = self._own_email = None
+        self._values = self._own_email = self._ask = None
 
 
 def prepare(cf, a, index, log):

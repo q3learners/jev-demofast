@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from ..narrate.shots import offerable
 from ..record.recorder import Recorder
-from .guards import DryRunStop, HazardStop, on_site
+from .guards import DryRunStop, HazardStop, may_open, on_site
 from .jev_drive import click_on_camera, drive_goal
 from .menus import LEFT_SITE
 from .popups import clear_popups, covered, first_screen
@@ -164,6 +164,8 @@ def _reach(s, rec, page, i, show, landed, texts, found_on=None):
             if got is None:
                 return "the page changed under the click"
         else:
+            if getattr(s, "hazards", False) and not may_open("", page):
+                return "it's a step a logged-in demo never takes"
             s.browser.call("Page.navigate", url=origin(s.start_url) + page)  # a cut, for a page with no link here
             s.wait_loaded()
             s.wait_for_page()

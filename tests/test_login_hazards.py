@@ -128,3 +128,29 @@ def test_the_check_uses_the_refreshed_element_and_page():
     with pytest.raises(HazardStop):
         s.act({**SAVE, "label": "Next"}, "click")
     assert s.browser.acted == []
+
+
+def test_any_other_email_address_typed_is_refused_whatever_the_label():
+    """Review: a type=email field labelled "Recipient" took any address."""
+    s = session(own_email="parent@demo.test")
+    with pytest.raises(HazardStop):
+        s.act({"node": 4, "label": "Recipient", "role": "textbox", "actions": {"fill": {"kind": "fill"}}}, "fill",
+              text="someone@else.test")
+    s.act({"node": 5, "label": "Child's name", "role": "textbox", "actions": {"fill": {"kind": "fill"}}}, "fill",
+          text="Alex")
+    assert len(s.browser.acted) == 1
+
+
+def test_the_tour_never_cuts_to_a_hazard_address():
+    """Review: the tour's cut opens a page by address, which never passes Session.act's check."""
+    navigated = []
+
+    class S:
+        hazards, host, start_url = True, "k12.test", "https://k12.test/"
+        page = {"url": "https://k12.test/", "text": ""}
+        browser = type("B", (), {"call": lambda self, m, **p: navigated.append(p), "evaluate": lambda self, js: None})()
+        def elements(self): return []
+        def observe(self): return self.page
+        def next_frame(self): pass
+    problem = tour._reach(S(), None, "/account/logout", 1, "x", "k12.test", [])
+    assert problem and navigated == []

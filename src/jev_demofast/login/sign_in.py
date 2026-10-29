@@ -21,7 +21,7 @@ def _focus_secret_js(label):
     return FOCUS_SECRET_JS_START + """
   const all = [...document.querySelectorAll('input[type=password]')].filter(e => e.checkVisibility());
   const name = e => (e.getAttribute('aria-label') || e.placeholder || '').split('\\n')[0].trim();
-  const e = all.find(e => name(e) === label) || all[0];
+  const e = all.find(e => name(e) === label) || (all.length === 1 ? all[0] : null);
   if (!e) return null;
   e.focus(); const r = e.getBoundingClientRect();
   return {x: r.x + r.width / 2, y: r.y + r.height / 2};
@@ -54,11 +54,11 @@ def _type_secret(s, label, value):
 
 def _fill(s, fields, values):
     for field in fields:
-        if field["secret"]:
+        e = next((e for e in s.elements() if "fill" in e["actions"] and _first_line(e["label"]) == field["label"]), None)
+        if field["secret"] and e is None:  # a password input: never observed, typed only where it has focus
             if not _type_secret(s, field["label"], values[field["name"]]):
                 return f"no field for {field['label']}"
             continue
-        e = next((e for e in s.elements() if "fill" in e["actions"] and _first_line(e["label"]) == field["label"]), None)
         if e is None:
             return f"no field for {field['label']}"
         s.act(e, "fill", text=values[field["name"]])

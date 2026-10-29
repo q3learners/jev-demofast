@@ -186,10 +186,10 @@ def cmd_demo(a):
         print(f"goal: {a.goal}")
     a.index = site_map(a, cf)
     login = None
-    if getattr(a, "login", False):
-        from .login import flow
-        login = flow.with_login(a, cf)
     try:
+        if getattr(a, "login", False):
+            from .login import flow
+            login = flow.with_login(a, cf)
         return _demo(a, cf)
     except RuntimeError as err:
         if str(err).startswith("login:"):
