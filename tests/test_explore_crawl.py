@@ -480,7 +480,9 @@ def test_a_logged_in_explore_never_opens_a_hazard_link(monkeypatch):
     monkeypatch.setattr(explore_mod.time, "sleep", lambda s: None)
     pages = site_pages()
     risky = [{"label": "My account", "to": "/account/logout"}, {"label": "Tidy up", "to": "/kids/3/delete"},
-             {"label": "Billing", "to": "/billing"}]
+             {"label": "Billing", "to": "/billing"}, {"label": "Kids", "to": "/account/deleteKid"},
+             {"label": "Go", "to": "/api/kid?action=destroy"}, {"label": "Emails", "to": "/emails/unsubscribe"},
+             {"label": "Account", "to": "/account/deactivate"}]
     pages["/"]["links"] = pages["/"]["links"] + risky
     for link in risky:
         pages[link["to"]] = {"title": "x", "text": "x", "links": [], "actions": [], "headings": ["x"]}
@@ -489,7 +491,8 @@ def test_a_logged_in_explore_never_opens_a_hazard_link(monkeypatch):
     class LoggedIn(session):
         hazards = True
     explore("https://shop.test/", cf=None, log=lambda x: None, session=LoggedIn)
-    assert not {"/account/logout", "/kids/3/delete", "/billing"} & set(visited)
+    assert not {"/account/logout", "/kids/3/delete", "/billing", "/account/deleteKid", "/api/kid?action=destroy",
+                "/emails/unsubscribe", "/account/deactivate"} & set(visited)
     session2, visited2 = fake_session(pages)  # not logged in: today's behaviour (only blocked labels are skipped)
     explore("https://shop.test/", cf=None, log=lambda x: None, session=session2)
     assert "/billing" in visited2

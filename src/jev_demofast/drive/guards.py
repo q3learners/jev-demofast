@@ -25,7 +25,7 @@ TOGGLES = {"checkbox", "switch", "radio", "menuitemcheckbox", "menuitemradio"}
 # A logged-in run may act like a user (add a student, ask the tutor) but never pays, deletes, logs out, changes the
 # account's sign-in details or reaches someone outside the account. Unlike BLOCKED, a brief can't unlock these.
 LOGGED_IN_HAZARDS = re.compile(r"\b(pay|payment|purchase|buy|checkout|check out|subscribe|upgrade|billing|card|"
-                               r"verify you are the parent|delete|remove|cancel subscription|close account|log ?out|"
+                               r"verify you are the parent|delete|remove|destroy|deactivate|unsubscribe|cancel subscription|close account|log ?out|"
                                r"sign ?out|change (your )?(email|password)|reset (your )?password|invite|share|send to)\b",
                                re.I)
 # A page about money (K-12's card check is a "Continue" under "Verify you are the parent"): moving forward is refused.

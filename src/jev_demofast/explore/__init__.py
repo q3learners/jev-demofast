@@ -73,7 +73,9 @@ def _logged_in_hazard(s, link):
     label and its path ("/account/logout", "/kids/3/delete") are checked here instead."""
     if not getattr(s, "hazards", False):
         return False
-    words = re.sub(r"[^a-zA-Z]+", " ", urlparse(link["to"]).path)
+    u = urlparse(link["to"])
+    words = re.sub(r"([a-z])([A-Z])", r"\1 \2", f"{u.path} {u.query}")  # /account/deleteKid, ?action=destroy
+    words = re.sub(r"[^a-zA-Z]+", " ", words)
     return hazard(link.get("label") or "") or hazard(words)
 
 
