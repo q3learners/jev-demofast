@@ -230,3 +230,35 @@ def test_a_lone_home_page_is_shown_all_the_way_down_one_moment_per_screen():
     assert len(looks) == 4  # 3000 px tall at 624 px per glide, until the page ends
     assert [a["shot"] for a in looks] == [1, 2, 3, 4] and all(len(a["headings"]) == 1 for a in looks)
     assert len(looks) <= tour.LONE_PAGE_GLIDES
+
+
+def test_back_to_the_top_is_instant_on_a_site_that_scrolls_smoothly():
+    """selvage.run sets scroll-behavior: smooth. Asked to scroll to the top, it was still near the bottom two frames
+    later, so the tour picked the link it saw there ("Explore all milestones") and clicked as it slid away; nothing
+    opened and the shot was skipped. Going back up has to land at once, like each step of a glide."""
+    class SmoothPage:
+        y = 2400
+
+        class browser:
+            @staticmethod
+            def evaluate(js, **k):
+                if "scrollTo" in js and "'instant'" in js:
+                    SmoothPage.y = 0
+                # any other scroll starts an animation: two frames later the page has barely moved
+
+        def next_frame(self): pass
+        def observe(self): return {}
+
+    page = SmoothPage()
+    tour._to_top(page)
+    assert SmoothPage.y == 0
+
+
+def test_every_scroll_the_tool_makes_lands_at_once():
+    """A smooth-scrolling site animates any scroll that doesn't say otherwise; what's read or clicked next is then
+    wherever the page happened to be. So every scroll in the recorder and the drivers is instant."""
+    import pathlib
+    src = pathlib.Path(tour.__file__).parents[1]
+    calls = [(str(p.relative_to(src)), m.group(0)) for p in src.rglob("*.py") for m in re.finditer(
+        r"(scrollTo|scrollBy|scrollIntoView)\(.*", p.read_text())]  # to the line's end: arguments nest parentheses
+    assert calls and not [c for c in calls if "instant" not in c[1]], calls
