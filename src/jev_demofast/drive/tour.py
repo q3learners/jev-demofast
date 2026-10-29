@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from ..narrate.shots import offerable
 from ..record.recorder import Recorder
-from .guards import DryRunStop, on_site
+from .guards import DryRunStop, HazardStop, on_site
 from .jev_drive import click_on_camera, drive_goal
 from .menus import LEFT_SITE
 from .popups import clear_popups, covered, first_screen
@@ -90,6 +90,9 @@ def run(cf, url, shots, index, out=None, fresh=False, dry_run=False, log=print, 
     except DryRunStop as stop:
         result["would_click"] = str(stop)
         log(f"{ms():>6} ms  DRY RUN: stopped before {str(stop)!r}; nothing was changed")
+    except HazardStop as stop:  # a logged-in run never pays, deletes or logs out: the demo ends before that step
+        result["stopped_at"] = str(stop)
+        log(f"{ms():>6} ms  the next step is {str(stop)!r}; the demo stops here")
     finally:
         rec.save(goal, cf.decisions, skipped=result["skipped"])
         s.close()

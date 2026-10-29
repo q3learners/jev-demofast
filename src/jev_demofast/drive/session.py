@@ -1,9 +1,11 @@
 """A browser tab plus the small operations both drivers need."""
+import re
 import time
 from urllib.parse import urljoin, urlparse
 
 from ..browser.cdp import Browser, StalePage, fingerprint
 from ..browser.elements import observed
+from .guards import HazardStop, hazard
 
 __all__ = ["Session", "StalePage", "address", "fingerprint", "origin", "site_cookies"]
 
@@ -58,6 +60,7 @@ class Session:
         self.host = urlparse(url).hostname
         self.browser = Browser(url, isolated=isolated)
         self.is_flutter = False
+        self.hazards, self.own_email = False, None  # a logged-in run (--login) turns hazards on
         self.flutter_ready()
         if fresh:  # start logged out: clear this site's cookies and storage (isolated profile only)
             self.clear_site(url)
@@ -118,7 +121,19 @@ class Session:
         self.observe()
         return next((e for e in self.elements() if e["node"] == element["node"]), element)
 
+    def check(self, element, kind, text=None):
+        """In a logged-in run, refuse a hazard (HazardStop): the label, a step forward on a money page, or an email
+        typed into a field that isn't the account's own."""
+        if not getattr(self, "hazards", False):
+            return
+        label = f"{element.get('label', '')} {element.get('hint', '')}".strip()
+        if kind != "fill" and hazard(label, context=(getattr(self, "page", None) or {}).get("text", "")):
+            raise HazardStop(element.get("label", "")[:60])
+        if kind == "fill" and re.search(r"e-?mail", label, re.I) and (text or "") != (self.own_email or ""):
+            raise HazardStop(element.get("label", "")[:60])
+
     def act(self, element, kind, text=None):
+        self.check(element, kind, text)
         element = self.refind(element)
         self.arm()
         self.browser.act(element["actions"][kind], self.page, text=text)
