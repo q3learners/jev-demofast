@@ -34,6 +34,8 @@ class Model:
                 ("Continue", "Next", "Create", "Add"):
             if want in labels:
                 return labels[want], 0.9
+        if instructions == forms.DIALOG_Q and options:  # a model may pick anything it's offered
+            return next(iter(options)), 0.6
         return None, 0.0
 
     def yes(self, instructions, state, true="", false="", model=None, images=None):
@@ -88,3 +90,35 @@ def test_only_the_accounts_email_is_typed():
     key, screen = read_screen(app)
     forms.handle(app, Model(), m, key, screen, "set up", Budget(), log=lambda m: None, now="t1", section="Kids")
     assert "parent@demo.test" in app.typed and "someone@else.test" not in app.typed and "Create" in app.pressed
+
+
+def _on_dialog(app, title, buttons):
+    app.dialog = {"title": title, "buttons": buttons}
+    return read_screen(app)
+
+
+def test_a_dialog_click_gets_the_one_time_check_too():
+    """Security review: on a partway account, a dialog's button that would finish setup isn't pressed either."""
+    app = FakeApp(state="partway")
+    key, screen = _on_dialog(app, "Add Maya first?", ["Skip", "Add"])
+    m = empty()
+    forms.handle(app, Model(state="partway", finishes=0.9), m, key, screen, "partway: Your kids", Budget(),
+                 log=lambda m: None, now="t1", section="Setup")
+    assert app.pressed == [] and ("Add", "seen, not finished") in {(a["control"], a["outcome"]) for a in m["actions"]}
+
+
+def test_a_dialog_mapping_didnt_open_from_a_form_allows_no_change():
+    """Security review: "Save changes" in a dialog is only pressed for a form mapping itself filled."""
+    app = FakeApp()
+    key, screen = _on_dialog(app, "Unsaved changes", ["Save changes", "Keep editing"])
+    forms.handle(app, Model(), empty(), key, screen, "set up", Budget(), log=lambda m: None, now="t1")
+    assert "Save changes" not in app.pressed
+
+
+def test_an_unknown_account_state_gets_the_one_time_check():
+    """Security review: a state the model couldn't read is treated like partway at the finishing click."""
+    app = FakeApp(state="partway")
+    key, screen = read_screen(app)
+    forms.handle(app, Model(state="partway", finishes=0.9), empty(), key, screen, "unknown", Budget(),
+                 log=lambda m: None, now="t1")
+    assert "Continue" not in app.pressed

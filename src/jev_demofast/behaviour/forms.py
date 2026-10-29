@@ -62,10 +62,11 @@ def _escape(s):
         s.browser.call("Input.dispatchKeyEvent", type=kind, key="Escape", code="Escape", windowsVirtualKeyCode=27)
 
 
-def _dialog(s, cf, m, key, now, chain):
-    """Answer the dialog on screen; returns the pressed element's label, or None (closed, nothing pressed)."""
+def _dialog(s, cf, m, key, now, chain, from_our_form):
+    """The dialog's button to press, or None (closed, nothing pressed). A change label ("Save changes") is allowed
+    only when the dialog came from a form this walk filled."""
     buttons = [e for e in s.elements() if "click" in e["actions"]]
-    allowed = [e for e in buttons if may_press(e, filled_here=True)]
+    allowed = [e for e in buttons if may_press(e, filled_here=from_our_form)]
     pick = None
     if allowed:
         try:
@@ -95,7 +96,7 @@ def handle(s, cf, m, key, screen, account, budget, log, now, section=None):
             steps += 1
             before = s.page.get("text", "")
             if screen["kind"] == "dialog":
-                e = _dialog(s, cf, m, key, now, chain)
+                e = _dialog(s, cf, m, key, now, chain, from_our_form=bool(filled))
                 if e is None:
                     return chain
             else:
@@ -123,9 +124,12 @@ def handle(s, cf, m, key, screen, account, budget, log, now, section=None):
                 e = next((b for b in buttons if str(b["node"]) == node), None)
                 if e is None:
                     return chain
-                if (account or "").startswith("partway") and _finishes(s, cf, _label(e)):
-                    chain.append(add_action(m, key, _label(e), "click", "seen, not finished", now))
-                    return chain
+            # anything but a set-up account ("unknown" too) gets the one-time check, on a dialog's button as well
+            if account != "set up" and _finishes(s, cf, _label(e)):
+                chain.append(add_action(m, key, _label(e), "click", "seen, not finished", now))
+                if screen["kind"] == "dialog":
+                    _escape(s)
+                return chain
             try:
                 s.act(e, "click")
             except HazardStop:
