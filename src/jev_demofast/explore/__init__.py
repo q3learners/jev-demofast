@@ -6,11 +6,12 @@ the pages behind a login (behind_login), which aren't mapped.
 Exploring only navigates, opens menus and reads; it never submits, signs up or types into a pop-up.
 """
 import json
+import re
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-from ..drive.guards import blocked, on_site
+from ..drive.guards import blocked, hazard, on_site
 from ..drive.popups import bot_check, clear_popups
 from ..drive.session import Session, StalePage
 from . import menus
@@ -65,6 +66,15 @@ def _read_page(s):
             "fields": [e["label"][:60] for e in els if "fill" in e["actions"] and e["label"]][:30],
             "texts": texts, "sign_in": s.browser.evaluate(SIGN_IN_FORM_JS) is True,
             **listing}
+
+
+def _logged_in_hazard(s, link):
+    """In a logged-in run (--login) a link is opened by its address, which never passes Session.act's check: its
+    label and its path ("/account/logout", "/kids/3/delete") are checked here instead."""
+    if not getattr(s, "hazards", False):
+        return False
+    words = re.sub(r"[^a-zA-Z]+", " ", urlparse(link["to"]).path)
+    return hazard(link.get("label") or "") or hazard(words)
 
 
 def _sent_to_sign_in(s, asked):
@@ -123,7 +133,7 @@ def explore(url, out=None, max_pages=40, max_minutes=5, cf=None, log=print, sess
                 button_paths.update(link["to"] for link in found_links)
                 page["links"] += [link for link in found_links if link not in page["links"]]
             for link in page["links"]:
-                if link["to"] not in queue and not blocked(link["label"]):
+                if link["to"] not in queue and not blocked(link["label"]) and not _logged_in_hazard(s, link):
                     queue.append(link["to"])
             return page
 
